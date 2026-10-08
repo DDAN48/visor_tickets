@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <title>Consulta ETA · OFSC</title>
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="top-left">
+    <button id="btnMenu" class="top-icon-btn" type="button" title="Menú" aria-label="Abrir menú" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <div class="brand"><div class="brand-mark">ETA</div><div><h1>Consulta ETA</h1></div></div>
+  </div>
+  <div class="top-actions">
+    <span id="loadStatus" class="load-status">Sin cargar</span>
+    <span id="lastUpdate" class="last-update">Sync —</span>
+    <button id="btnControl" class="top-icon-btn info" type="button" title="Estado de sincronización" aria-label="Ver estado de sincronización"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg></button>
+    <button id="btnRefresh" class="top-icon-btn refresh" type="button" title="Actualizar operativo" aria-label="Actualizar operativo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2.34-5.66L20 7.7"/><path d="M20 3v4.7h-4.7"/></svg></button>
+  </div>
+</header>
+
+<div id="sideBackdrop" class="side-backdrop hidden"></div>
+<aside id="sideMenu" class="side-menu" aria-hidden="true">
+  <div class="side-menu-head"><strong>Menú</strong><button id="btnMenuClose" class="side-close" aria-label="Cerrar menú">×</button></div>
+  <nav class="side-nav">
+    <button class="side-item active" type="button"><span>▦</span><strong>Operativo</strong></button>
+    <div class="side-coming">Histórico, Móviles y Contratistas se habilitarán más adelante.</div>
+  </nav>
+</aside>
+
+<main>
+  <section id="view-operativo" class="view active">
+    <div id="stickyDashboard" class="sticky-dashboard">
+      <section class="toolbar card compact-toolbar">
+        <div class="toolbar-grid">
+          <label>Buscar<input id="opSearch" type="search" placeholder="Tarea, nodo, técnico, evento, dirección..." /></label>
+          <div class="field"><span>Estado</span><div id="topEstado" class="multi-host"></div></div>
+          <div class="field"><span>Contratista</span><div id="topContratista" class="multi-host"></div></div>
+          <div class="field"><span>Árbol</span><div id="topArbol" class="multi-host"></div></div>
+          <div class="field"><span>Capa</span><div id="topCapa" class="multi-host"></div></div>
+          <div class="field"><span>SubCapa</span><div id="topSubCapa" class="multi-host"></div></div>
+          <div class="field"><span>Tipif</span><div id="topTipif" class="multi-host"></div></div>
+          <div class="field fixed-window"><span>Ventana operativa</span><div id="opWindowLabel" class="fixed-window-value">Hoy -2 días → Hoy +30 días</div></div>
+          <div class="toolbar-inline-actions" aria-label="Acciones de filtro">
+            <button id="btnApplyFilters" class="icon-action" type="button" title="Aplicar filtros" aria-label="Aplicar filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+            <button id="btnClearFilters" class="icon-action" type="button" title="Restablecer filtros" aria-label="Restablecer filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M5.5 15a7 7 0 1 0 1.4-7.8L4 10"/></svg></button>
+            <button id="btnToggleMap" class="icon-action" type="button" title="Mostrar mapa" aria-label="Mostrar mapa" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+          </div>
+        </div>
+      </section>
+      <section id="kpiStrip" class="kpi-strip"></section>
+    </div>
+
+    <details id="mapDetails" class="card map-details">
+      <summary><span>Mapa de tareas visibles</span><small id="mapSummary" class="muted">Colapsado</small></summary>
+      <section id="mapWrap" class="map-wrap"><div id="map"></div><div class="map-note">Mapa de tareas únicas visibles con coordenadas.</div></section>
+    </details>
+
+    <section id="subview-tasks" class="subview active card table-card">
+      <div class="table-head">
+        <div><strong>Operativo — estado actual por tarea</strong><span id="opCountLabel" class="muted"></span></div>
+        <div class="head-actions">
+          <details id="dailyStateDetails" class="table-daily-state">
+            <summary><span id="dailyStateSummary">Completados: Ayer 0 · Hoy 0</span></summary>
+            <div class="daily-state-body"><div class="daily-state-table-wrap"><table class="daily-state-table"><thead><tr><th>Estado</th><th id="dailyYesterdayHead">Ayer</th><th id="dailyTodayHead">Hoy</th></tr></thead><tbody id="dailyStateTbody"></tbody></table></div></div>
+          </details>
+          <details id="columnChooser" class="column-chooser"><summary class="btn ghost small">Columnas</summary><div id="columnChooserPanel" class="column-chooser-panel"></div></details>
+          <button id="btnExportTasks" class="btn small excel-btn" title="Exportar tabla filtrada a Excel">Excel</button>
+          <button id="btnExportExcel" class="btn small primary" title="Un Excel por contratista dentro de un ZIP">ZIP por contratista</button>
+        </div>
+      </div>
+      <div class="table-scroll"><table id="opTable"><thead><tr id="taskHeaderRow"></tr><tr id="taskFilterRow" class="column-filters"></tr></thead><tbody id="opTbody"></tbody></table></div>
+      <div class="table-footer"><div class="pager"><button id="opPrev" class="btn ghost small">Anterior</button><span id="opPageLabel">Página 1</span><button id="opNext" class="btn ghost small">Siguiente</button></div></div>
+    </section>
+  </section>
+</main>
+
+<aside id="drawer" class="drawer" aria-hidden="true"><div class="drawer-backdrop" data-close-drawer></div><div class="drawer-panel"><div class="drawer-head"><div><div class="eyebrow">Tarea</div><h2 id="drawerTitle">Tarea</h2></div><button class="btn ghost small" data-close-drawer>Cerrar</button></div><div id="drawerBody" class="drawer-body"></div></div></aside>
+
+<div id="controlModal" class="modal hidden">
+  <div class="modal-card control-card">
+    <div class="modal-head"><div><h2>Estado de sincronización</h2><div class="muted">CONTROL + estado de actualización Tableau/PDF.</div></div><button id="btnControlClose" class="btn ghost small">Cerrar</button></div>
+    <div id="controlBody" class="control-body"><div class="empty">Consultando…</div></div>
+  </div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite"><div class="loading-card"><div class="spinner"></div><strong id="loadingTitle">Cargando información…</strong><span id="loadingDetail">Preparando operativo</span><div class="progress"><div id="loadingBar" class="progress-bar"></div></div></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="config.js"></script><script src="app.js"></script>
+</body>
+</html>
