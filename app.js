@@ -14,10 +14,10 @@
   // Orden de columnas: primero las visibles por defecto; el resto queda disponible en "Columnas".
   const COLUMN_DEFS = [
     ['task','Tarea'],['created','Creado'],['affected','Afectación'],['priority','Prioridad'],['node','Nodo'],['tipif','Tipif'],['status','Estado'],
-    ['subcapa','Subcapa'],['origin','Origen'],['event','Ticket Evento'],['parentEvent','Evento Padre'],['ageDays','Antigüedad'],['contractor','Contratista'],['scheduled','Agendado'],
+    ['subcapa','Subcapa'],['origin','Origen'],['event','Ticket Evento'],['parentEvent','Evento Padre'],['ageDays','Antigüedad'],['eventAgeDays','Antigüedad Evento'],['contractor','Contratista'],['scheduled','Agendado'],
     ['tipificacion','Tipificación tarea'],['capa','Capa'],['eventSigla','Sigla Evento'],['startTime','Start Time'],['endTime','End Time'],['tech','Técnico / móvil'],['resource','ID Recurso'],['tree','Árbol']
   ];
-  const INITIAL_VISIBLE_COLUMNS = new Set(['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','contractor','scheduled']);
+  const INITIAL_VISIBLE_COLUMNS = new Set(['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled']);
   const ESSENTIAL_COLUMNS = INITIAL_VISIBLE_COLUMNS;
   const TOP_TO_COLUMN = {Estado:'status',Contratista:'contractor',Arbol:'tree',Capa:'capa',SubCapa:'subcapa',Tipif:'tipif',Afectacion:'affected'};
   const COLUMN_TO_TOP = Object.fromEntries(Object.entries(TOP_TO_COLUMN).map(([k,v])=>[v,k]));
@@ -79,6 +79,7 @@
   const node=r=>norm(r.Nodo||r.nodo);
   const scheduled=r=>r.Agendado||r.agendado||r.date||'';
   const ageDays=r=>{const direct=Number(r.AntiguedadDias);if(Number.isFinite(direct))return direct;const d=parseDate(createdValue(r));return d?Math.max(0,(Date.now()-d.getTime())/86400000):null;};
+  const eventAgeDays=r=>{const direct=Number(r.AntiguedadEventoDias);if(Number.isFinite(direct))return direct;const d=taskEventDate(r);return d?Math.max(0,(Date.now()-d.getTime())/86400000):null;};
 
   /*
      ESTADO ACTUAL POR TAREA
@@ -491,7 +492,7 @@
   function buildAllMultis(){for(const [id,key] of [['topEstado','Estado'],['topContratista','Contratista'],['topArbol','Arbol'],['topCapa','Capa'],['topSubCapa','SubCapa'],['topTipif','Tipif'],['colStatus','Estado'],['colContractor','Contratista'],['colAffected','Afectacion'],['colCapa','Capa'],['colSubcapa','SubCapa'],['colTipif','Tipif'],['colTree','Arbol']])makeMulti(id,key,id.startsWith('top')?'top':'col');}
 
   function rowSearchText(r){return [taskId(r),node(r),tech(r),parentEvent(r),eventCode(r),contractor(r),capa(r),subcapa(r),siglaTarea(r),r.AddressLine1,r.address].map(norm).join(' ').toLowerCase();}
-  function rowValueByColumn(r,key){switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);default:return'';}}
+  function rowValueByColumn(r,key){switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);default:return'';}}
   function buildColumnValueCache(){
     const rows=availableRows();state.columnValueCache={};
     for(const [key] of COLUMN_DEFS){
@@ -575,7 +576,7 @@
   function createdAgeHours(r){const d=parseDate(createdValue(r));return d?Math.max(0,(Date.now()-d.getTime())/3600000):null;}
   function createdClass(r){const h=createdAgeHours(r);if(h===null)return'';return h<=24?'created-green':h<48?'created-yellow':'created-old';}
 
-  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>`<td data-column="${k}" class="${k==='ageDays'?`age-cell ${ageClass(ageDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''}">${cellHtml(r,k)}</td>`).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=()=>openTaskDrawer(tr.dataset.task));}
+  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>`<td data-column="${k}" class="${(k==='ageDays'||k==='eventAgeDays')?`age-cell ${ageClass(k==='ageDays'?ageDays(r):eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''}">${cellHtml(r,k)}</td>`).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=()=>openTaskDrawer(tr.dataset.task));}
   function cellHtml(r,k){if(k==='task')return`<span class="task-link">${esc(taskId(r))}</span>`;if(k==='status')return badgeStatus(r.Estado||r.status);if(k==='affected')return affected(r)?`<span class="badge ${/^SI$/i.test(affected(r))?'warn':'ok'}">${esc(affected(r))}</span>`:'—';return esc(fmt(rowValueByColumn(r,k)));}
 
   function taskHistoryFromDate(id,cur){
@@ -721,8 +722,8 @@
     if(key==='created'){
       const cls=createdClass(r);const fill=cls==='created-green'?XL.green:cls==='created-yellow'?XL.yellow:'F4C7AB';
       cell.s={...base,fill:{fgColor:{rgb:fill}},font:{...base.font,bold:true,color:{rgb:cls==='created-green'?XL.greenText:cls==='created-yellow'?XL.yellowText:'7A3F19'}}};
-    } else if(key==='ageDays'){
-      const a=Number(ageDays(r));const fill=a>=3?XL.red:a>=2?XL.yellow:XL.green;const color=a>=3?XL.redText:a>=2?XL.yellowText:XL.greenText;
+    } else if(key==='ageDays'||key==='eventAgeDays'){
+      const a=Number(key==='ageDays'?ageDays(r):eventAgeDays(r));const fill=a>=3?XL.red:a>=2?XL.yellow:XL.green;const color=a>=3?XL.redText:a>=2?XL.yellowText:XL.greenText;
       cell.s={...base,fill:{fgColor:{rgb:fill}},font:{...base.font,bold:true,color:{rgb:color}}};
     } else if(key==='status'){
       const k=statusKey(r.Estado||r.status);const map={started:['FFEB9C','815F00'],suspended:['FFD7DC','A12734'],assigned:['DCE9FF','215CAD'],enroute:['D8EEF7','1C617A'],scheduled:['EADCFF','64409B'],completed:['D8F4E6','00734A'],cancelled:['ECE7FF','6038A8']};
@@ -789,6 +790,7 @@
     if(key==='priority'){return `<td>${esc(priority(r)||'—')}</td>`;}
     if(key==='status'){return `<td>${captureStatusPill(r)}</td>`;}
     if(key==='ageDays'){const cls=ageClass(ageDays(r));return `<td class="${cls}">${esc(ageDays(r)??'—')}</td>`;}
+    if(key==='eventAgeDays'){const cls=ageClass(eventAgeDays(r));return `<td class="${cls}">${esc(eventAgeDays(r)??'—')}</td>`;}
     if(key==='scheduled'){return `<td>${esc(formatDateOnly(scheduled(r)))}</td>`;}
     const value = key==='task'?taskId(r):key==='node'?node(r):key==='tipif'?siglaTarea(r):key==='subcapa'?subcapa(r):key==='origin'?origin(r):key==='event'?(oracleEvent(r)||parentEvent(r)):key==='parentEvent'?parentEvent(r):key==='contractor'?contractor(r):rowValueByColumn(r,key);
     return `<td>${esc(value)}</td>`;
@@ -840,8 +842,8 @@
     const kpis=computeKpisForRows(allRows);
     const top=kpis.slice(0,7), bottom=kpis.slice(7,14);
     const now=new Date();
-    const previewCols=['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','contractor','scheduled'];
-    const previewHeaders=['Tarea','Creado','Afectación','Prioridad','Nodo','Tipif','Estado','Subcapa','Origen','Ticket Evento','Evento Padre','Antigüedad','Contratista','Agendado'];
+    const previewCols=['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled'];
+    const previewHeaders=['Tarea','Creado','Afectación','Prioridad','Nodo','Tipif','Estado','Subcapa','Origen','Ticket Evento','Evento Padre','Antigüedad','Antigüedad Evento','Contratista','Agendado'];
     const pageText=pageCount>1?` · captura ${pageIndex+1}/${pageCount}`:'';
     return `<div class="export-capture-card excel-like"><div class="export-capture-title">Consulta ETA · ${esc(contractorName)}</div><div class="export-capture-sub">Resumen operativo · ${esc(currentRange().from)} → ${esc(currentRange().to)} · generado ${esc(now.toLocaleString('es-AR'))}${pageText}</div><div class="excel-kpi-grid">${top.map(([l,v])=>`<div class="excel-kpi ${kpiCaptureClass(l)}"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div><div class="excel-kpi-grid second">${bottom.map(([l,v])=>`<div class="excel-kpi ${kpiCaptureClass(l)}"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div><table class="export-capture-preview"><thead><tr>${previewHeaders.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${previewRows.map(r=>`<tr>${previewCols.map(key=>captureCellHtml(r,key)).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
@@ -934,8 +936,8 @@
     cell.font={name:'Arial',size:10,color:{argb:'FF17263A'}};cell.alignment={vertical:'middle'};cell.border=excelJsThinBorder();
     if(key==='created'){
       const cls=createdClass(r),fill=cls==='created-green'?'C6EFCE':cls==='created-yellow'?'FFEB9C':'F4C7AB';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(cls==='created-green'?'007D51':cls==='created-yellow'?'8A6400':'7A3F19')}};
-    } else if(key==='ageDays'){
-      const a=Number(ageDays(r)),fill=a>=3?'FFC7CE':a>=2?'FFEB9C':'C6EFCE',color=a>=3?'9C0006':a>=2?'8A6400':'007D51';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
+    } else if(key==='ageDays'||key==='eventAgeDays'){
+      const a=Number(key==='ageDays'?ageDays(r):eventAgeDays(r)),fill=a>=3?'FFC7CE':a>=2?'FFEB9C':'C6EFCE',color=a>=3?'9C0006':a>=2?'8A6400':'007D51';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
     } else if(key==='status'){
       const map={started:['FFEB9C','815F00'],suspended:['FFD7DC','A12734'],assigned:['DCE9FF','215CAD'],enroute:['D8EEF7','1C617A'],scheduled:['EADCFF','64409B'],completed:['D8F4E6','00734A'],cancelled:['ECE7FF','6038A8']};const m=map[statusKey(r.Estado||r.status)];if(m){cell.fill=excelJsFill(m[0]);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(m[1])}};}
     } else if(key==='affected'){
@@ -1142,3 +1144,4 @@
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();loadAllOperativo();loadControlStatus(false);
 })();
+
