@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=22.47" />
 </head>
 <body>
 <header class="topbar">
@@ -48,7 +48,7 @@
           <div class="field"><span>Capa</span><div id="topCapa" class="multi-host"></div></div>
           <div class="field"><span>SubCapa</span><div id="topSubCapa" class="multi-host"></div></div>
           <div class="field"><span>Tipif</span><div id="topTipif" class="multi-host"></div></div>
-          <div class="field fixed-window"><span>Ventana operativa</span><div id="opWindowLabel" class="fixed-window-value">Hoy -2 días → Hoy +30 días</div></div>
+          <div class="field fixed-window"><span>Ventana operativa</span><div id="opWindowLabel" class="fixed-window-value">Hoy -7 días → Hoy +30 días</div></div>
           <div class="toolbar-inline-actions" aria-label="Acciones de filtro">
             <button id="btnApplyFilters" class="icon-action" type="button" title="Aplicar filtros" aria-label="Aplicar filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
             <button id="btnClearFilters" class="icon-action" type="button" title="Restablecer filtros" aria-label="Restablecer filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M5.5 15a7 7 0 1 0 1.4-7.8L4 10"/></svg></button>
@@ -59,31 +59,37 @@
       <section id="kpiStrip" class="kpi-strip"></section>
     </div>
 
-    <details id="mapDetails" class="card map-details">
-      <summary><span>Mapa de tareas visibles</span><small id="mapSummary" class="muted">Colapsado</small></summary>
-      <section id="mapWrap" class="map-wrap"><div id="map"></div><div class="map-note">Mapa de tareas únicas visibles con coordenadas.</div></section>
-    </details>
-
     <section id="subview-tasks" class="subview active card table-card">
       <div class="table-head">
         <div><strong>Operativo — estado actual por tarea</strong><span id="opCountLabel" class="muted"></span></div>
         <div class="head-actions">
           <details id="dailyStateDetails" class="table-daily-state">
             <summary><span id="dailyStateSummary">Completados: Ayer 0 · Hoy 0</span></summary>
-            <div class="daily-state-body"><div class="daily-state-table-wrap"><table class="daily-state-table"><thead><tr><th>Estado</th><th id="dailyYesterdayHead">Ayer</th><th id="dailyTodayHead">Hoy</th></tr></thead><tbody id="dailyStateTbody"></tbody></table></div></div>
+            <div class="daily-state-body"><div class="daily-state-table-wrap"><table class="daily-state-table"><thead><tr><th>Estado</th><th id="dailyYesterdayHead">Ayer</th><th id="dailyTodayHead">Hoy</th></tr></thead><tbody id="dailyStateTbody"></tbody></table></div><div class="daily-state-actions"><button id="btnDailyAllYesterday" class="btn small daily-all-btn" type="button">Excel Ayer</button><button id="btnDailyAllToday" class="btn small daily-all-btn" type="button">Excel Hoy</button></div></div>
           </details>
+          <div class="table-zoom" title="Zoom de la tabla"><button id="btnTableZoomOut" class="btn ghost small zoom-btn" type="button" aria-label="Reducir tabla">−</button><span id="tableZoomLabel">90%</span><button id="btnTableZoomIn" class="btn ghost small zoom-btn" type="button" aria-label="Ampliar tabla">+</button></div>
           <details id="columnChooser" class="column-chooser"><summary class="btn ghost small">Columnas</summary><div id="columnChooserPanel" class="column-chooser-panel"></div></details>
           <button id="btnExportTasks" class="btn small excel-btn" title="Exportar tabla filtrada a Excel">Excel</button>
           <button id="btnExportExcel" class="btn small primary" title="Un Excel por contratista dentro de un ZIP">ZIP por contratista</button>
         </div>
       </div>
       <div class="table-scroll"><table id="opTable"><thead><tr id="taskHeaderRow"></tr><tr id="taskFilterRow" class="column-filters"></tr></thead><tbody id="opTbody"></tbody></table></div>
-      <div class="table-footer"><div class="pager"><button id="opPrev" class="btn ghost small">Anterior</button><span id="opPageLabel">Página 1</span><button id="opNext" class="btn ghost small">Siguiente</button></div></div>
+      <div class="table-footer"><div id="tableHScroll" class="table-hscroll" aria-label="Desplazamiento horizontal de la tabla"><div id="tableHScrollInner" class="table-hscroll-inner"></div></div><div class="pager"><button id="opPrev" class="btn ghost small">Anterior</button><span id="opPageLabel">Página 1</span><button id="opNext" class="btn ghost small">Siguiente</button></div></div>
     </section>
   </section>
 </main>
 
-<aside id="drawer" class="drawer" aria-hidden="true"><div class="drawer-backdrop" data-close-drawer></div><div class="drawer-panel"><div class="drawer-head"><div><div class="eyebrow">Tarea</div><h2 id="drawerTitle">Tarea</h2></div><button class="btn ghost small" data-close-drawer>Cerrar</button></div><div id="drawerBody" class="drawer-body"></div></div></aside>
+<aside id="drawer" class="drawer" aria-hidden="true"><div class="drawer-backdrop" data-close-drawer></div><div class="drawer-panel"><div class="drawer-head"><div><div class="eyebrow">Tarea</div><h2 id="drawerTitle">Tarea</h2></div><div class="drawer-head-actions"><div class="history-zoom" title="Zoom del histórico"><button id="btnHistoryZoomOut" class="btn ghost small zoom-btn" type="button" aria-label="Reducir histórico">−</button><span id="historyZoomLabel">100%</span><button id="btnHistoryZoomIn" class="btn ghost small zoom-btn" type="button" aria-label="Ampliar histórico">+</button></div><button class="btn ghost small" data-close-drawer>Cerrar</button></div></div><div id="drawerBody" class="drawer-body"></div></div></aside>
+
+<div id="mapModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-card map-modal-card">
+    <div class="modal-head map-modal-head">
+      <div><h2>Mapa de tareas visibles</h2><div class="muted">Tareas únicas visibles con coordenadas según los filtros actuales.</div></div>
+      <button id="btnMapClose" class="btn ghost small" type="button">Cerrar</button>
+    </div>
+    <div class="map-modal-body"><div id="map"></div></div>
+  </div>
+</div>
 
 <div id="controlModal" class="modal hidden">
   <div class="modal-card control-card">
@@ -95,6 +101,7 @@
 <div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite"><div class="loading-card"><div class="spinner"></div><strong id="loadingTitle">Cargando información…</strong><span id="loadingDetail">Preparando operativo</span><div class="progress"><div id="loadingBar" class="progress-bar"></div></div></div></div>
 <div id="toast" class="toast hidden"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="config.js"></script><script src="app.js"></script>
+<script src="config.js?v=22.47"></script><script src="app.js?v=22.47"></script>
 </body>
 </html>
+
