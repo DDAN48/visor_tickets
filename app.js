@@ -14,7 +14,7 @@
   // Orden de columnas: primero las visibles por defecto; el resto queda disponible en "Columnas".
   const COLUMN_DEFS = [
     ['task','Tarea'],['created','Creado'],['affected','Afectación'],['priority','Prioridad'],['node','Nodo'],['tipif','Tipif'],['status','Estado'],
-    ['subcapa','Subcapa'],['origin','Origen'],['event','Ticket Evento'],['parentEvent','Evento Padre'],['ageDays','Antigüedad'],['eventAgeDays','Antigüedad Evento'],['contractor','Contratista'],['scheduled','Agendado'],
+    ['subcapa','Subcapa'],['origin','Origen'],['event','Evento'],['parentEvent','Padre'],['ageDays','Antigüedad'],['eventAgeDays','Antigüedad Evento'],['contractor','Contratista'],['scheduled','Agendado'],
     ['tipificacion','Tipificación tarea'],['capa','Capa'],['eventSigla','Sigla Evento'],['startTime','Start Time'],['endTime','End Time'],['tech','Técnico / móvil'],['resource','ID Recurso'],['tree','Árbol']
   ];
   const INITIAL_VISIBLE_COLUMNS = new Set(['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled']);
@@ -27,7 +27,7 @@
     meta:{apiTotal:0,uniqueTotal:0}, filterValues:{}, topFilters:{}, colFilters:{}, textFilters:{},
     defaultLiveStatuses:new Set(), map:null, markers:null, histData:[], loading:false, hiddenColumns:new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>!INITIAL_VISIBLE_COLUMNS.has(k))),
     exclusions:cloneDefaults(), sort:{key:'created',direction:1}, columnSelections:{}, columnValueCache:{}, kpiValues:[],
-    loadedRange:{from:'',to:''}, analyticsRange:{from:'',to:''}, taskHistoryCache:new Map(), backgroundLoading:false
+    loadedRange:{from:'',to:''}, analyticsRange:{from:'',to:''}, taskHistoryCache:new Map(), backgroundLoading:false, tableZoom:90, historyZoom:100
   };
 
   const norm=v=>String(v??'').trim();
@@ -47,8 +47,10 @@
   const isLiveStatus=s=>LIVE_KEYS.has(statusKey(s));
   const statusClass=s=>statusKey(s);
   const badgeStatus=s=>`<span class="badge ${statusClass(s)}">${esc(statusEs(s))}</span>`;
-  const ageClass=d=>Number(d)>=3?'age-red':Number(d)>=2?'age-yellow':'age-green';
+  const eventAgeClass=d=>Number(d)>=3?'age-red':Number(d)>=2?'age-yellow':'age-green';
+  const taskAgeClass=r=>{const h=createdAgeHours(r);if(h===null)return'';if(h<24)return'age-white';if(h<48)return'age-green';if(h<72)return'age-yellow';return'age-red';};
   const capaClass=v=>{const x=norm(v).toLowerCase();if(x.includes('edificio'))return'edificio';if(x.includes('infra'))return'infra';if(x.includes('fibra'))return'fibra';if(x.includes('usac'))return'usac';if(x.includes('ingress'))return'ingress';if(x.includes('leak'))return'leak';return''};
+  const originClass=v=>{const x=norm(v).toLowerCase();if(x.includes('extern'))return'externo';if(x.includes('client'))return'cliente';return''};
   const taskId=r=>norm(r.Tarea||r.apptNumber||r.activityId);
   const siglaTarea=r=>norm(r.Tipif||r.SiglaTarea||(taskId(r).match(/^\d{6}([A-Z]{3})/)||[])[1]);
   const oracleEvent=r=>norm(r.TicketEvento||r.XA_Eventticket||r.ticket_evento);
@@ -78,7 +80,7 @@
   const subcapa=r=>norm(r.SubCapa||r.subcapa);
   const node=r=>norm(r.Nodo||r.nodo);
   const scheduled=r=>r.Agendado||r.agendado||r.date||'';
-  const ageDays=r=>{const direct=Number(r.AntiguedadDias);if(Number.isFinite(direct))return direct;const d=parseDate(createdValue(r));return d?Math.max(0,(Date.now()-d.getTime())/86400000):null;};
+  const ageDays=r=>{const d=parseDate(createdValue(r));if(!d)return null;const h=Math.max(0,(Date.now()-d.getTime())/3600000);return Math.floor(h/24);};
   const eventAgeDays=r=>{const direct=Number(r.AntiguedadEventoDias);if(Number.isFinite(direct))return direct;const d=taskEventDate(r);return d?Math.max(0,(Date.now()-d.getTime())/86400000):null;};
 
   /*
@@ -90,30 +92,61 @@
      Si dos registros empatan exactamente, se prioriza un estado terminal
      (COMPLETADA/CANCELADA/NO REALIZADA) y luego el activityId mayor.
   */
-  function currentSnapshot(rows){
-    const map=new Map();
-    for(const r of rows){
-      const id=taskId(r);
-      if(!id)continue;
-      const prev=map.get(id);
-      if(!prev){map.set(id,r);continue;}
+  function terminalStatusRank(r){
+    const k=statusKey(r.Estado||r.status);
+    if(k==='cancelled')return 30;
+    if(k==='completed')return 20;
+    if(k==='notdone')return 10;
+    return 0;
+  }
 
-      const ts=interventionTimestamp(r);
-      const prevTs=interventionTimestamp(prev);
-      if(ts>prevTs){map.set(id,r);continue;}
-      if(ts<prevTs)continue;
-
-      const k=statusKey(r.Estado||r.status);
-      const pk=statusKey(prev.Estado||prev.status);
-      const terminal=new Set(['completed','cancelled','notdone']);
-      if(terminal.has(k)&&!terminal.has(pk)){map.set(id,r);continue;}
-      if(terminal.has(k)===terminal.has(pk)){
-        const a=Number(r.activityId||r.ActivityID||0);
-        const b=Number(prev.activityId||prev.ActivityID||0);
-        if(Number.isFinite(a)&&Number.isFinite(b)&&a>b)map.set(id,r);
-      }
+  function realInterventionTimestamp(r){
+    // Importante: NO usa Agendado/date como evidencia de que el estado ocurrió.
+    // Una cancelación manual puede tener StartTime/EndTime nulos y conservar una
+    // fecha de agenda futura. Esa agenda no debe reactivar el ticket.
+    for(const v of [endValue(r),startValue(r),r.FechaEfectiva,r.fecha_intervencion,r.FechaIntervencion]){
+      const d=parseDate(v);if(d)return d.getTime();
     }
-    return [...map.values()];
+    return 0;
+  }
+
+  function chooseNewest(rows){
+    return [...rows].sort((a,b)=>{
+      const ra=realInterventionTimestamp(a),rb=realInterventionTimestamp(b);
+      if(rb!==ra)return rb-ra;
+      const ia=Number(a.activityId||a.ActivityID||0),ib=Number(b.activityId||b.ActivityID||0);
+      if(Number.isFinite(ia)&&Number.isFinite(ib)&&ib!==ia)return ib-ia;
+      return interventionTimestamp(b)-interventionTimestamp(a);
+    })[0];
+  }
+
+  function currentSnapshot(rows){
+    const grouped=new Map();
+    for(const r of rows){
+      const id=taskId(r);if(!id)continue;
+      if(!grouped.has(id))grouped.set(id,[]);
+      grouped.get(id).push(r);
+    }
+
+    const out=[];
+    for(const taskRows of grouped.values()){
+      // Un estado terminal encontrado dentro de la ventana cargada manda sobre
+      // una asignación/agendamiento futuro. CANCELADA tiene prioridad máxima.
+      const terminalRows=taskRows.filter(r=>terminalStatusRank(r)>0);
+      if(terminalRows.length){
+        terminalRows.sort((a,b)=>{
+          const rank=terminalStatusRank(b)-terminalStatusRank(a);
+          if(rank)return rank;
+          const rb=realInterventionTimestamp(b),ra=realInterventionTimestamp(a);
+          if(rb!==ra)return rb-ra;
+          return interventionTimestamp(b)-interventionTimestamp(a);
+        });
+        out.push(terminalRows[0]);
+        continue;
+      }
+      out.push(chooseNewest(taskRows));
+    }
+    return out.filter(Boolean);
   }
   function historyForTask(id){return state.raw.filter(r=>taskId(r)===id).sort((a,b)=>interventionTimestamp(b)-interventionTimestamp(a));}
   function taskEventDate(r){const m=eventCode(r).match(/^(\d{2})(\d{2})(\d{2})/);if(!m)return null;const d=new Date(2000+Number(m[1]),Number(m[2])-1,Number(m[3]));return Number.isNaN(d.getTime())?null:d;}
@@ -152,31 +185,52 @@
 
   /*
     Operativo fijo: no depende de filtros de fecha del usuario.
-    -2 días captura estados recientes (incluye ayer/anteayer).
-    +30 días captura tareas futuras agendadas/asignadas en OFSC.
-    El histórico individual se consulta aparte, a demanda.
+    Ventana total: hoy -7 días hasta hoy +30 días.
+
+    FASE 1 (bloqueante): -7 hasta +3.
+    Se divide en 7 segmentos para mantener consultas estables. La tabla NO
+    se habilita hasta que los 7 segmentos terminaron y se reconstruyó el
+    estado actual por tarea.
+
+    FASE 2 (segundo plano): +4 hasta +30.
+    Se consulta sin bloquear al usuario y la tabla se refresca UNA sola vez
+    al terminar el bloque futuro.
   */
   function operationalRange(){
     const now=new Date();
     return {
-      from:localYmd(shiftLocalDays(now,-2)),
+      from:localYmd(shiftLocalDays(now,-7)),
       to:localYmd(shiftLocalDays(now,30))
     };
   }
 
-  function segmentedOperationalRanges(){
+  function phaseOneOperationalRanges(){
+    const now=new Date();
+    // 7 segmentos que cubren completamente -7 / +3.
+    return [
+      {key:'p1_1',label:'Histórico -7/-6',from:localYmd(shiftLocalDays(now,-7)),to:localYmd(shiftLocalDays(now,-6))},
+      {key:'p1_2',label:'Histórico -5/-4',from:localYmd(shiftLocalDays(now,-5)),to:localYmd(shiftLocalDays(now,-4))},
+      {key:'p1_3',label:'Histórico -3/-2',from:localYmd(shiftLocalDays(now,-3)),to:localYmd(shiftLocalDays(now,-2))},
+      {key:'p1_4',label:'Histórico -1/hoy',from:localYmd(shiftLocalDays(now,-1)),to:localYmd(shiftLocalDays(now,0))},
+      {key:'p1_5',label:'Futuro +1',from:localYmd(shiftLocalDays(now,1)),to:localYmd(shiftLocalDays(now,1))},
+      {key:'p1_6',label:'Futuro +2',from:localYmd(shiftLocalDays(now,2)),to:localYmd(shiftLocalDays(now,2))},
+      {key:'p1_7',label:'Futuro +3',from:localYmd(shiftLocalDays(now,3)),to:localYmd(shiftLocalDays(now,3))}
+    ];
+  }
+
+  function backgroundFutureRanges(){
     const now=new Date();
     return [
-      {key:'actual',label:'Operación actual',from:localYmd(shiftLocalDays(now,-2)),to:localYmd(shiftLocalDays(now,2))},
-      {key:'near',label:'Futuro cercano',from:localYmd(shiftLocalDays(now,3)),to:localYmd(shiftLocalDays(now,10))},
-      {key:'future',label:'Programación futura',from:localYmd(shiftLocalDays(now,11)),to:localYmd(shiftLocalDays(now,30))}
+      {key:'f1',label:'Futuro +4/+10',from:localYmd(shiftLocalDays(now,4)),to:localYmd(shiftLocalDays(now,10))},
+      {key:'f2',label:'Futuro +11/+20',from:localYmd(shiftLocalDays(now,11)),to:localYmd(shiftLocalDays(now,20))},
+      {key:'f3',label:'Futuro +21/+30',from:localYmd(shiftLocalDays(now,21)),to:localYmd(shiftLocalDays(now,30))}
     ];
   }
 
   function ensureOperationalDates(){
     const r=operationalRange();
     const label=$('#opWindowLabel');
-    if(label)label.textContent=`${r.from} → ${r.to}  (fijo: -2 / +30 días)`;
+    if(label)label.textContent=`${r.from} → ${r.to}  (fijo: -7 / +30 días)`;
     return r;
   }
 
@@ -237,7 +291,7 @@
   async function loadAnalyticsYesterdayToday(forceRefresh=false){
     const range=yesterdayTodayRange();
     /*
-      La ventana operativa fija (-2/+30) ya contiene ayer y hoy.
+      La ventana operativa fija (-7/+30) ya contiene ayer y hoy.
       Reutilizamos el mismo dataset para evitar una segunda llamada a Apps Script.
     */
     if(state.loadedRange.from<=range.from && state.loadedRange.to>=range.to && state.raw.length){
@@ -339,6 +393,109 @@
     return [...map.values()];
   }
 
+  function mergeHistoryIntoCurrent(cur,h){
+    const out={...cur};
+    for(const [k,v] of Object.entries(h||{}))if(v!==undefined&&v!==null&&String(v).trim()!=='')out[k]=v;
+    const st=h?.Estado||h?.estado||h?.status;if(norm(st)){out.Estado=statusEs(st);out.status=st;}
+    return out;
+  }
+  function resolveVerifiedHistoryCurrent(cur,history){
+    const rows=[cur,...(history||[])].filter(Boolean),term=rows.filter(r=>historyTerminalRank(r)>0);
+    if(term.length){return [...term].sort((a,b)=>{const rank=historyTerminalRank(b)-historyTerminalRank(a);if(rank)return rank;const rb=realInterventionTimestamp(b),ra=realInterventionTimestamp(a);if(rb!==ra)return rb-ra;return interventionTimestamp(b)-interventionTimestamp(a);})[0];}
+    return [...rows].sort((a,b)=>{const rb=realInterventionTimestamp(b),ra=realInterventionTimestamp(a);if(rb!==ra)return rb-ra;return interventionTimestamp(b)-interventionTimestamp(a);})[0];
+  }
+  async function verifyOlderThan72AgainstHistory(baseRows,{blocking=false,candidates=null}={}){
+    // V22.45:
+    // - validar una sola vez sobre las tareas que YA quedaron en la tabla final;
+    // - una consulta por taskId;
+    // - solo >72 h;
+    // - solo estados operativos/abiertos;
+    // - excluir Capa = INFRA;
+    // - excluir cancelados/completados/no realizados por isLiveStatus().
+    const source=Array.isArray(candidates)?candidates:[];
+    const seen=new Set();
+    const MAX_HISTORY_CHECKS=100;
+
+    // Primero armamos los candidatos únicos. Luego priorizamos los más antiguos
+    // y aplicamos un corte duro: jamás se hacen más de 100 consultas por ciclo.
+    const allCandidates=source.filter(r=>{
+      const id=taskId(r);
+      if(!id||seen.has(id))return false;
+      if((createdAgeHours(r)??-1)<=72)return false;
+      if(!isLiveStatus(r.Estado||r.status))return false;
+      if(!passesExclusions(r))return false;
+      if(upper(capa(r))==='INFRA')return false;
+      seen.add(id);
+      return true;
+    }).sort((a,b)=>(createdAgeHours(b)||0)-(createdAgeHours(a)||0));
+
+    const totalEligible=allCandidates.length;
+    const finalCandidates=allCandidates.slice(0,MAX_HISTORY_CHECKS);
+
+    if(!finalCandidates.length)return {
+      rows:baseRows,checked:0,corrected:0,errors:0,totalEligible:0,limitReached:false
+    };
+
+    let cursor=0,done=0,errors=0;
+    const corrections=[];
+    const workers=[];
+    // Bajamos concurrencia para no castigar OFSC con ráfagas innecesarias.
+    const workerCount=Math.min(2,finalCandidates.length);
+
+    const worker=async()=>{
+      while(true){
+        const idx=cursor++;
+        if(idx>=finalCandidates.length)break;
+        const cur=finalCandidates[idx];
+        const id=taskId(cur);
+        try{
+          if(blocking){
+            setLoading(
+              true,
+              'Validando tickets visibles >72 h…',
+              `${done+1} de ${finalCandidates.length} · ${id}`,
+              92+Math.round((done/finalCandidates.length)*7)
+            );
+          }else{
+            $('#loadStatus').textContent=`Validando ${done+1}/${finalCandidates.length} tickets visibles >72 h${totalEligible>MAX_HISTORY_CHECKS?` · límite ${MAX_HISTORY_CHECKS} de ${totalEligible}`:''}…`;
+          }
+
+          const result=await fetchCombinedTaskHistory(id,cur);
+          const resolved=resolveVerifiedHistoryCurrent(cur,result.items);
+
+          if(resolved){
+            const merged=mergeHistoryIntoCurrent(cur,resolved);
+            const changed=
+              statusKey(merged.Estado||merged.status)!==statusKey(cur.Estado||cur.status) ||
+              realInterventionTimestamp(merged)!==realInterventionTimestamp(cur) ||
+              norm(merged.activityId||merged.ActivityID)!==norm(cur.activityId||cur.ActivityID);
+
+            if(changed)corrections.push(merged);
+          }
+        }catch(e){
+          errors++;
+          console.warn('Validación histórica OFSC final >72h',id,e);
+        }finally{
+          done++;
+          // Pequeña pausa para evitar ráfagas de consultas.
+          await new Promise(r=>setTimeout(r,120));
+        }
+      }
+    };
+
+    for(let i=0;i<workerCount;i++)workers.push(worker());
+    await Promise.all(workers);
+
+    return {
+      rows:mergeOperationalRows(baseRows,corrections),
+      checked:finalCandidates.length,
+      corrected:corrections.length,
+      errors,
+      totalEligible,
+      limitReached:totalEligible>MAX_HISTORY_CHECKS
+    };
+  }
+
   function sameSet(a,b){
     if(!(a instanceof Set)||!(b instanceof Set)||a.size!==b.size)return false;
     for(const v of a)if(!b.has(v))return false;
@@ -373,77 +530,115 @@
   async function loadAllOperativo(forceRefresh=false){
     if(state.loading)return;
     if(state.backgroundLoading){
-      showToast('La actualización futura todavía está corriendo en segundo plano.');
+      showToast('La programación futura todavía se está completando en segundo plano.');
       return;
     }
+
     ensureOperationalDates();
     state.taskHistoryCache.clear();
     $('#btnRefresh').disabled=true;
     const previous={raw:state.raw,current:state.current,filtered:state.filtered,meta:state.meta,loadedRange:{...state.loadedRange}};
     const fullRange=currentRange();
-    const segments=segmentedOperationalRanges();
+    const phaseOne=phaseOneOperationalRanges();
+    const futureSegments=backgroundFutureRanges();
+    const phaseOneRange={from:phaseOne[0].from,to:phaseOne[phaseOne.length-1].to};
     let initialized=state.raw.length>0;
+    let merged=[];
 
-    // Si existe una copia completa reciente, se muestra mientras se refresca el tramo crítico.
-    if(!forceRefresh&&!state.raw.length){
-      const cached=loadOperationalCache(fullRange);
-      if(cached){
-        installOperationalRows(cached.items,fullRange,{initialize:true});
-        initialized=true;
-        $('#loadStatus').textContent=`Cache local ${new Date(cached.savedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} · actualizando…`;
-      }
-    }
-
-    // V22.16: sólo bloquea el tramo operativo prioritario -2 / +2 días.
-    const firstSeg=segments[0];
-    setLoading(true,'Cargando operación actual…',`${firstSeg.from} → ${firstSeg.to}`,25);
+    // FASE 1: siempre bloqueante. No mostramos una copia parcial/cacheada porque
+    // el objetivo es asegurar el estado real antes de habilitar la tabla.
+    setLoading(true,'Reconstruyendo estado actual…',`Consultando segmento 1 de ${phaseOne.length}`,2);
     try{
-      const first=await loadOneOperationalRange(firstSeg,forceRefresh);
-      let merged=mergeOperationalRows(first.items);
-      installOperationalRows(merged,{from:firstSeg.from,to:firstSeg.to},{initialize:!initialized});
+      for(let i=0;i<phaseOne.length;i++){
+        const seg=phaseOne[i];
+        const pct=Math.round(((i+0.15)/phaseOne.length)*100);
+        setLoading(true,'Reconstruyendo estado actual…',`${seg.label} · segmento ${i+1} de ${phaseOne.length}`,pct);
+        const part=await loadOneOperationalRange(seg,forceRefresh);
+        merged=mergeOperationalRows(merged,part.items);
+        setLoading(true,'Reconstruyendo estado actual…',`${seg.label} listo · ${i+1} de ${phaseOne.length}`,Math.round(((i+1)/phaseOne.length)*100));
+      }
+
+      // Fase inicial terminada. No hacemos validación histórica aquí:
+      // se hará una sola vez sobre las tareas que queden finalmente visibles.
+      installOperationalRows(merged,phaseOneRange,{initialize:!initialized});
       initialized=true;
       state.analyticsRaw=state.raw;
-      state.analyticsRange={from:firstSeg.from,to:firstSeg.to};
+      state.analyticsRange={...phaseOneRange};
       renderDailyStatePanel();
-      $('#loadStatus').textContent='Operativo actual listo · completando futuro…';
+      $('#loadStatus').textContent='Operativo listo -7/+3 · completando futuro…';
       loadControlStatus(false);
-
-      // Desde aquí la página queda utilizable: se retira el overlay.
       setLoading(false);
-      state.backgroundLoading=true;
 
-      // No se espera esta promesa: futuro cercano y lejano corren detrás.
+      // FASE 2: +4/+30 en segundo plano. No renderizamos por segmento; refrescamos
+      // tabla/KPI/mapa UNA sola vez cuando termina todo el bloque futuro.
+      state.backgroundLoading=true;
       (async()=>{
         const failures=[];
+        let backgroundMerged=merged;
+        let maxTo=phaseOneRange.to;
         try{
-          for(let i=1;i<segments.length;i++){
-            const seg=segments[i];
-            $('#loadStatus').textContent=i===1
-              ? 'Operativo listo · cargando futuro cercano en segundo plano…'
-              : 'Operativo listo · cargando programación futura en segundo plano…';
+          for(let i=0;i<futureSegments.length;i++){
+            const seg=futureSegments[i];
+            $('#loadStatus').textContent=`Operativo listo · cargando programación futura ${i+1}/${futureSegments.length}…`;
             try{
               const part=await loadOneOperationalRange(seg,forceRefresh);
-              merged=mergeOperationalRows(merged,part.items);
-              installOperationalRows(merged,{from:firstSeg.from,to:seg.to},{initialize:false});
+              backgroundMerged=mergeOperationalRows(backgroundMerged,part.items);
+              maxTo=seg.to;
             }catch(e){
               failures.push(`${seg.label}: ${e.message}`);
-              console.warn('Segmento operativo incompleto',seg,e);
+              console.warn('Segmento futuro incompleto',seg,e);
             }
-            // Ceder un ciclo de UI ayuda a que filtros, scroll y clicks sigan fluidos.
             await new Promise(r=>setTimeout(r,50));
           }
 
-          saveOperationalCache(fullRange,merged,merged.length);
-          state.loadedRange={...fullRange};
-          state.analyticsRaw=state.raw;
-          state.analyticsRange={...fullRange};
-          renderDailyStatePanel();
-          $('#loadStatus').textContent=`Actualizado ${new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}`;
+          // Primero construimos la tabla FINAL con toda la ventana.
+          const completedRange={from:phaseOneRange.from,to:maxTo};
+          installOperationalRows(backgroundMerged,completedRange,{initialize:false});
 
-          if(failures.length){
-            showToast(`Operativo actual disponible. No se pudo completar ${failures.length} tramo(s) futuro(s); podés reintentar con Actualizar.`,9000);
+          // Recién ahora tomamos EXACTAMENTE las filas que quedaron visibles
+          // y validamos una sola vez: >72 h + estado abierto + no INFRA.
+          const finalVisibleCandidates=[...state.filtered];
+          const candidateCount=finalVisibleCandidates.filter(r=>
+            (createdAgeHours(r)??-1)>72 &&
+            isLiveStatus(r.Estado||r.status) &&
+            passesExclusions(r) &&
+            upper(capa(r))!=='INFRA'
+          ).length;
+
+          const cappedCount=Math.min(candidateCount,100);
+          $('#loadStatus').textContent=candidateCount
+            ? `Ventana completa · validando ${cappedCount} de ${candidateCount} ticket(s) elegibles >72 h…`
+            : 'Ventana completa · sin tickets visibles >72 h para validar';
+
+          const futureVerify=await verifyOlderThan72AgainstHistory(
+            backgroundMerged,
+            {blocking:false,candidates:finalVisibleCandidates}
+          );
+
+          backgroundMerged=futureVerify.rows;
+
+          if(futureVerify.limitReached){
+            showToast(`Validación histórica limitada a 100 tickets (de ${futureVerify.totalEligible} elegibles).`,8000);
+          }
+
+          // Si hubo correcciones, reconstruimos la tabla final para que un ticket
+          // cancelado/completado desaparezca del operativo abierto si corresponde.
+          if(futureVerify.corrected){
+            installOperationalRows(backgroundMerged,completedRange,{initialize:false});
+          }
+
+          state.analyticsRaw=state.raw;
+          state.analyticsRange={...completedRange};
+          renderDailyStatePanel();
+
+          if(!failures.length){
+            state.loadedRange={...fullRange};
+            saveOperationalCache(fullRange,backgroundMerged,backgroundMerged.length);
+            $('#loadStatus').textContent=`Actualizado ${new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} · ventana -7/+30 completa`;
+            showToast(`Operativo completo: ${backgroundMerged.length.toLocaleString('es-AR')} intervenciones → ${state.current.length.toLocaleString('es-AR')} tareas únicas.`);
           }else{
-            showToast(`Operativo completo: ${merged.length.toLocaleString('es-AR')} intervenciones → ${state.current.length.toLocaleString('es-AR')} tareas únicas.`);
+            $('#loadStatus').textContent=`Operativo -7/+3 · futuro parcial hasta ${maxTo}`;
+            showToast(`No se pudieron completar ${failures.length} tramo(s) futuro(s); podés reintentar con Actualizar.`,9000);
           }
         }finally{
           state.backgroundLoading=false;
@@ -455,7 +650,7 @@
       renderAll();
       setLoading(false);
       $('#btnRefresh').disabled=false;
-      showToast(`No se pudo cargar la operación actual (${firstSeg.from} → ${firstSeg.to}): ${e.message}.`,10000);
+      showToast(`No se pudo validar la fase inicial -7/+3: ${e.message}. La tabla no fue actualizada.`,10000);
     }
   }
 
@@ -490,6 +685,8 @@
     btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}const vals=(state.filterValues[key]||[]);const allSelected=vals.length>0&&vals.every(v=>bag.has(v));if(allSelected)bag.clear();else vals.forEach(v=>bag.add(v));syncTopAndColumnFilter(scope,key,bag);render();state.page=1;applyFilters();});host._refresh=render;
   }
   function buildAllMultis(){for(const [id,key] of [['topEstado','Estado'],['topContratista','Contratista'],['topArbol','Arbol'],['topCapa','Capa'],['topSubCapa','SubCapa'],['topTipif','Tipif'],['colStatus','Estado'],['colContractor','Contratista'],['colAffected','Afectacion'],['colCapa','Capa'],['colSubcapa','SubCapa'],['colTipif','Tipif'],['colTree','Arbol']])makeMulti(id,key,id.startsWith('top')?'top':'col');}
+  function closeTableFilterPanels(){document.querySelectorAll('.excel-panel').forEach(p=>p.classList.add('hidden'));}
+
 
   function rowSearchText(r){return [taskId(r),node(r),tech(r),parentEvent(r),eventCode(r),contractor(r),capa(r),subcapa(r),siglaTarea(r),r.AddressLine1,r.address].map(norm).join(' ').toLowerCase();}
   function rowValueByColumn(r,key){switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);default:return'';}}
@@ -501,13 +698,40 @@
   }
   function columnFilterLabel(key){const bag=state.columnSelections[key];if(!bag||bag.size===0)return'Todos';const vals=state.columnValueCache[key]||[];if(bag.size===vals.length)return'Todos';if(bag.size===1)return[...bag][0];return`${bag.size} selecc.`;}
   function makeExcelColumnFilter(host,key){
-    host.innerHTML='';host.dataset.filterKey=key;const wrap=document.createElement('div');wrap.className='multi excel-multi';const btn=document.createElement('button');btn.type='button';btn.className='excel-filter-btn';const panel=document.createElement('div');panel.className='multi-panel hidden excel-panel';
+    host.innerHTML='';host.dataset.filterKey=key;
+    const wrap=document.createElement('div');wrap.className='multi excel-multi';
+    const btn=document.createElement('button');btn.type='button';btn.className='excel-filter-btn';
+    const panel=document.createElement('div');panel.className='multi-panel hidden excel-panel excel-filter-portal';
     const bag=state.columnSelections[key] instanceof Set?state.columnSelections[key]:(state.columnSelections[key]=new Set());
     panel.innerHTML='<div class="multi-tools"><input type="search" placeholder="Buscar valores…"><button type="button" data-a="toggle">Todos</button><button type="button" class="multi-close" data-a="close" aria-label="Cerrar filtro">×</button></div><div class="multi-list"></div>';
-    const search=panel.querySelector('input'),list=panel.querySelector('.multi-list');wrap.append(btn,panel);host.append(wrap);
-    const render=()=>{btn.textContent=`${columnFilterLabel(key)} ▾`;const q=norm(search.value).toLowerCase();let vals=(state.columnValueCache[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));const total=vals.length;vals=vals.slice(0,350);list.innerHTML=vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}><span>${esc(v)}</span></label>`).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';const toggleBtn=panel.querySelector('[data-a="toggle"]');const allVals=state.columnValueCache[key]||[];const allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';list.querySelectorAll('input').forEach(i=>i.onchange=()=>{i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);btn.textContent=`${columnFilterLabel(key)} ▾`;render();state.page=1;applyFilters();});};
-    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});panel.classList.toggle('hidden');if(!panel.classList.contains('hidden')){render();search.focus();}};
-    search.oninput=render;panel.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}const allVals=state.columnValueCache[key]||[];const allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(allSelected)bag.clear();else allVals.forEach(v=>bag.add(v));syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();});host._refresh=render;render();
+    const search=panel.querySelector('input'),list=panel.querySelector('.multi-list');
+    wrap.append(btn);host.append(wrap);document.body.append(panel);
+    const close=()=>panel.classList.add('hidden');
+    const place=()=>{
+      const r=btn.getBoundingClientRect(),w=Math.min(310,window.innerWidth-16);
+      panel.style.position='fixed';
+      panel.style.width=w+'px';
+      panel.style.left=Math.max(8,Math.min(r.left,window.innerWidth-w-8))+'px';
+      panel.style.zIndex='10000';
+      /* Todos los filtros de tabla se despliegan siempre hacia abajo. */
+      panel.style.top=(r.bottom+4)+'px';
+      panel.style.bottom='auto';
+      /* Si queda poco alto visible, limitamos la lista; nunca invertimos el popup. */
+      const available=Math.max(150,window.innerHeight-r.bottom-16);
+      panel.style.maxHeight=available+'px';
+    };
+    const render=()=>{
+      btn.textContent=`${columnFilterLabel(key)} ▾`;
+      const q=norm(search.value).toLowerCase();let vals=(state.columnValueCache[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));const total=vals.length;vals=vals.slice(0,350);
+      list.innerHTML=vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}><span>${esc(v)}</span></label>`).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';
+      const toggleBtn=panel.querySelector('[data-a="toggle"]'),allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';
+      list.querySelectorAll('input').forEach(i=>i.onchange=()=>{i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();});
+    };
+    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});const willOpen=panel.classList.contains('hidden');if(!willOpen){close();return;}render();panel.classList.remove('hidden');place();search.focus();};
+    panel.onclick=e=>e.stopPropagation();
+    search.oninput=render;
+    panel.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){close();return;}const allVals=state.columnValueCache[key]||[];const allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(allSelected)bag.clear();else allVals.forEach(v=>bag.add(v));syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();});
+    host._refresh=render;render();
   }
   function applyFilters(){
     const q=norm($('#opSearch').value).toLowerCase();let rows=availableRows();
@@ -557,26 +781,34 @@
       if(day===todayKey)target.today.add(id);else target.yesterday.add(id);
     }
     const display=defs.map(([k,label])=>[k,label,buckets.get(k).yesterday.size,buckets.get(k).today.size]);
-    tbody.innerHTML=display.map(([key,label,y,t])=>`<tr class="state-${key}"><td><span class="daily-state-label">${esc(label)}</span></td><td class="daily-num ${y===0?'daily-state-zero':''}">${y}</td><td class="daily-num ${t===0?'daily-state-zero':''}">${t}</td></tr>`).join('');
+    tbody.innerHTML=display.map(([key,label,y,t])=>`<tr class="state-${key}"><td><span class="daily-state-label">${esc(label)}</span></td><td class="daily-num ${y===0?'daily-state-zero':''}"><button class="daily-export-btn" type="button" data-daily-state="${esc(key)}" data-daily-day="${esc(yesterdayKey)}" ${y===0?'disabled':''} title="Descargar ${esc(label)} de ayer en Excel">${y}</button></td><td class="daily-num ${t===0?'daily-state-zero':''}"><button class="daily-export-btn" type="button" data-daily-state="${esc(key)}" data-daily-day="${esc(todayKey)}" ${t===0?'disabled':''} title="Descargar ${esc(label)} de hoy en Excel">${t}</button></td></tr>`).join('');
+    tbody.querySelectorAll('.daily-export-btn').forEach(btn=>btn.onclick=e=>{e.stopPropagation();exportDailyStateTickets(btn.dataset.dailyState,btn.dataset.dailyDay);});
+    const allY=$('#btnDailyAllYesterday'),allT=$('#btnDailyAllToday');if(allY){allY.textContent=`Excel Ayer (${display.reduce((a,x)=>a+x[2],0)})`;allY.onclick=e=>{e.stopPropagation();exportDailyAllTickets(yesterdayKey);};}if(allT){allT.textContent=`Excel Hoy (${display.reduce((a,x)=>a+x[3],0)})`;allT.onclick=e=>{e.stopPropagation();exportDailyAllTickets(todayKey);};}
     const completed=display[0]||['completed','Completados',0,0];
     $('#dailyStateSummary').textContent=`Completados: Ayer ${completed[2]} · Hoy ${completed[3]}`;
   }
 
   function renderAll(){renderKpis();renderDailyStatePanel();renderTable();updateMap();}
-  function computeKpis(){const rows=state.filtered;const count=p=>rows.filter(p).length,unique=p=>new Set(rows.filter(p).map(taskId)).size;const eventDays=r=>{const x=taskEventDate(r);return x?Math.max(0,(Date.now()-x.getTime())/86400000):null};const ages=rows.map(ageDays).filter(Number.isFinite);const oldest=ages.length?Math.max(...ages):0;const layer=r=>capa(r).toLowerCase();return [
-    ['Tickets Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],['Tareas +72hs',count(r=>ageDays(r)>=3),'age-red'],['Tareas 48–72hs',count(r=>ageDays(r)>=2&&ageDays(r)<3),'age-yellow'],['Tarea más antigua',`${Math.floor(oldest)} días`,''],['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],['Fibra',unique(r=>layer(r).includes('fibra')),'capa-fibra'],['Red + Energía',unique(r=>layer(r).includes('usac')),'capa-usac'],['Infra',unique(r=>layer(r)==='infra'),'capa-infra'],['Edificio',unique(r=>layer(r)==='edificio'),'capa-edificio'],['Eventos +2d',count(r=>(eventDays(r)??-1)>=2),''],['Eventos +3d',count(r=>(eventDays(r)??-1)>=3),''],['Eventos +7d',count(r=>(eventDays(r)??-1)>=7),'']];}
-  function renderKpis(){state.kpiValues=computeKpis();$('#kpiStrip').innerHTML=state.kpiValues.map(([l,v,c])=>`<article class="kpi ${c}"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div></article>`).join('');}
+  function computeKpis(){const rows=state.filtered;const count=p=>rows.filter(p).length,unique=p=>new Set(rows.filter(p).map(taskId)).size;const eventDays=r=>{const x=taskEventDate(r);return x?Math.max(0,(Date.now()-x.getTime())/86400000):null};const hours=rows.map(createdAgeHours).filter(Number.isFinite);const oldestHours=hours.length?Math.max(...hours):0;const layer=r=>capa(r).toLowerCase();return [
+    ['Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],['+72hs',count(r=>(createdAgeHours(r)??-1)>=72),'age-red'],['48–72hs',count(r=>{const h=createdAgeHours(r);return h!==null&&h>=48&&h<72;}),'age-yellow'],['24–48hs',count(r=>{const h=createdAgeHours(r);return h!==null&&h>=24&&h<48;}),'age-green'],['Más antigua',`${Math.floor(oldestHours/24)} días`,''],['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],['Fibra',unique(r=>layer(r).includes('fibra')),'capa-fibra'],['Red + Energía',unique(r=>layer(r).includes('usac')),'capa-usac'],['Infra',unique(r=>layer(r)==='infra'),'capa-infra'],['Edificio',unique(r=>layer(r)==='edificio'),'capa-edificio'],['Ev +2d',count(r=>(eventDays(r)??-1)>=2),''],['Ev +3d',count(r=>(eventDays(r)??-1)>=3),''],['Ev +7d',count(r=>(eventDays(r)??-1)>=7),'']];}
+  function renderKpis(){state.kpiValues=computeKpis();$('#kpiStrip').innerHTML=state.kpiValues.map(([l,v,c])=>`<article class="kpi ${c}"><div class="l" title="${esc(l)}">${esc(l)}</div><div class="v">${esc(v)}</div></article>`).join('');}
 
 
-  function buildColumns(){const hr=$('#taskHeaderRow'),fr=$('#taskFilterRow');hr.innerHTML='';fr.innerHTML='';buildColumnValueCache();for(const [key,label] of COLUMN_DEFS){const th=document.createElement('th');th.dataset.column=key;th.textContent=label;th.title='Click para ordenar';th.style.cursor='pointer';th.onclick=()=>{if(state.sort.key===key)state.sort.direction*=-1;else state.sort={key,direction:1};applyFilters();};hr.append(th);const fh=document.createElement('th');fh.dataset.column=key;const host=document.createElement('div');host.className='multi-host';fh.append(host);fr.append(fh);makeExcelColumnFilter(host,key);}buildColumnChooser();applyColumnVisibility();}
+  function buildColumns(){document.querySelectorAll('.excel-filter-portal').forEach(p=>p.remove());const hr=$('#taskHeaderRow'),fr=$('#taskFilterRow');hr.innerHTML='';fr.innerHTML='';buildColumnValueCache();for(const [key,label] of COLUMN_DEFS){const th=document.createElement('th');th.dataset.column=key;th.textContent=label;th.title='Click para ordenar';th.style.cursor='pointer';th.onclick=()=>{if(state.sort.key===key)state.sort.direction*=-1;else state.sort={key,direction:1};applyFilters();};hr.append(th);const fh=document.createElement('th');fh.dataset.column=key;const host=document.createElement('div');host.className='multi-host';fh.append(host);fr.append(fh);makeExcelColumnFilter(host,key);}buildColumnChooser();applyColumnVisibility();}
 
   function buildColumnChooser(){const p=$('#columnChooserPanel');p.innerHTML=`<div class="column-chooser-actions"><button id="colsAll" class="btn ghost small">Todas</button><button id="colsEss" class="btn ghost small">Esenciales</button><button id="colsClose" class="btn ghost small chooser-close">Cerrar ×</button></div>${COLUMN_DEFS.map(([k,l])=>`<label><input class="col-check" type="checkbox" value="${k}" ${state.hiddenColumns.has(k)?'':'checked'}><span>${esc(l)}</span></label>`).join('')}`;p.querySelectorAll('.col-check').forEach(i=>i.onchange=()=>{i.checked?state.hiddenColumns.delete(i.value):state.hiddenColumns.add(i.value);applyColumnVisibility();});$('#colsAll').onclick=e=>{e.preventDefault();state.hiddenColumns.clear();buildColumnChooser();applyColumnVisibility();};$('#colsEss').onclick=e=>{e.preventDefault();state.hiddenColumns=new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>!ESSENTIAL_COLUMNS.has(k)));buildColumnChooser();applyColumnVisibility();};$('#colsClose').onclick=e=>{e.preventDefault();$('#columnChooser').open=false;};}
   function applyColumnVisibility(){for(const [k] of COLUMN_DEFS)document.querySelectorAll(`[data-column="${k}"]`).forEach(el=>el.classList.toggle('col-hidden',state.hiddenColumns.has(k)));}
 
   function createdAgeHours(r){const d=parseDate(createdValue(r));return d?Math.max(0,(Date.now()-d.getTime())/3600000):null;}
-  function createdClass(r){const h=createdAgeHours(r);if(h===null)return'';return h<=24?'created-green':h<48?'created-yellow':'created-old';}
+  function createdClass(r){const h=createdAgeHours(r);if(h===null)return'';if(h<24)return'created-white';if(h<48)return'created-green';if(h<72)return'created-yellow';return'created-old';}
 
-  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>`<td data-column="${k}" class="${(k==='ageDays'||k==='eventAgeDays')?`age-cell ${ageClass(k==='ageDays'?ageDays(r):eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''}">${cellHtml(r,k)}</td>`).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=()=>openTaskDrawer(tr.dataset.task));}
+  function duplicateSets(rows){
+    const countBy=(getter)=>{const m=new Map();for(const r of rows){const v=upper(getter(r));if(!v||v==='—')continue;m.set(v,(m.get(v)||0)+1);}return new Set([...m].filter(([,n])=>n>1).map(([v])=>v));};
+    return {nodes:countBy(node),parents:countBy(parentEvent)};
+  }
+
+  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=duplicateSets(state.filtered);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:k==='eventAgeDays'?`age-cell ${eventAgeClass(eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=()=>openTaskDrawer(tr.dataset.task));requestAnimationFrame(updateTableHorizontalScroller);}
+
   function cellHtml(r,k){if(k==='task')return`<span class="task-link">${esc(taskId(r))}</span>`;if(k==='status')return badgeStatus(r.Estado||r.status);if(k==='affected')return affected(r)?`<span class="badge ${/^SI$/i.test(affected(r))?'warn':'ok'}">${esc(affected(r))}</span>`:'—';return esc(fmt(rowValueByColumn(r,k)));}
 
   function taskHistoryFromDate(id,cur){
@@ -644,21 +876,11 @@
     const currentCard=`<div class="visit current-live"><div class="visit-card"><div class="visit-top">${badgeStatus(cur.Estado||cur.status)}<strong>Estado actual operativo</strong></div><div class="visit-times"><b>Start:</b> ${esc(formatDate(startValue(cur)))} · <b>End:</b> ${esc(formatDate(endValue(cur)))} · <b>Agendado:</b> ${esc(formatDateOnly(scheduled(cur)))}</div><div class="visit-meta">${esc(fmt(tech(cur)))} · ${esc(fmt(contractor(cur)))} · ${esc(fmt(tree(cur)))} · ${esc(fmt(node(cur)))}</div>${norm(cur.XA_Activity_Notes||cur.activityNotes||cur.closure_notes)?`<div class="notes">${esc(cur.XA_Activity_Notes||cur.activityNotes||cur.closure_notes)}</div>`:''}</div></div>`;
     const timeline=ordered.map((x,i)=>`<div class="visit"><div class="visit-card"><div class="visit-top">${badgeStatus(x.Estado||x.estado||x.status)}<strong>${i===0?'Última intervención':'Intervención'}</strong></div><div class="visit-times"><b>Fecha:</b> ${esc(formatDate(x.FechaIntervencion||x.FechaEfectiva||x.fecha_intervencion||x.date))} · <b>Start:</b> ${esc(formatDate(startValue(x)))} · <b>End:</b> ${esc(formatDate(endValue(x)))} · <b>Agendado:</b> ${esc(formatDateOnly(scheduled(x)))}</div><div class="visit-meta">${esc(fmt(tech(x)))} · ${esc(fmt(contractor(x)))} · ${esc(fmt(tree(x)))} · ${esc(fmt(node(x)))}</div>${norm(x.XA_Activity_Notes||x.activityNotes||x.closure_notes)?`<div class="notes">${esc(x.XA_Activity_Notes||x.activityNotes||x.closure_notes)}</div>`:''}</div></div>`).join('');
     const sourceText=sources?`<div class="history-source">Fuente histórica: ${esc(sources)}</div>`:'';
-    const historyBody=loading?'<div class="empty">Consultando Oracle + D1…</div>':error?`<div class="empty">Histórico parcial/no disponible: ${esc(error)}</div>${timeline}`:(timeline||'<div class="empty">No se encontraron intervenciones anteriores para esta tarea.</div>');
+    const historyBody=loading?'<div class="empty">Consultando OFSC…</div>':error?`<div class="empty">Histórico parcial/no disponible: ${esc(error)}</div>${timeline}`:(timeline||'<div class="empty">No se encontraron intervenciones anteriores para esta tarea.</div>');
     $('#drawerTitle').textContent=id;
     $('#drawerBody').innerHTML=`<div class="detail-grid">${summary.map(([k,v])=>`<div class="detail-item"><div class="k">${esc(k)}</div><div class="v">${esc(fmt(v))}</div></div>`).join('')}</div><h3 class="history-title">Estado actual</h3><div class="timeline">${currentCard}</div><h3 class="history-title">Histórico de intervenciones</h3>${sourceText}<div class="timeline">${historyBody}</div>`;
   }
-  async function fetchTaskHistoryD1(id,cur){
-    const url=new URL(`${C.HISTORICO_BASE_URL}/api/historico`);
-    url.searchParams.set('from',taskHistoryFromDate(id,cur));
-    url.searchParams.set('to',todayLocalKey());
-    url.searchParams.set('apptNumber',id);
-    url.searchParams.set('page','1');
-    url.searchParams.set('limit','500');
-    const j=await fetchJson(url.toString(),{cache:'no-store'},30000);
-    return Array.isArray(j.items)?j.items:[];
-  }
-  async function fetchTaskHistoryOracle(id,cur){
+  async function fetchTaskHistoryOfsc(id,cur){
     const url=new URL(`${C.HISTORICO_BASE_URL}/api/ticket`);
     url.searchParams.set('apptNumber',id);
     url.searchParams.set('from',taskHistoryFromDate(id,cur));
@@ -666,32 +888,39 @@
     const j=await fetchJson(url.toString(),{cache:'no-store'},60000);
     return Array.isArray(j.items)?j.items:[];
   }
+
   async function fetchCombinedTaskHistory(id,cur){
+    // V22.47: histórico operativo exclusivamente desde OFSC.
+    // /api/ticket en el Worker consulta directamente Oracle Field Service.
+    // historico_tickets (D1) queda reservado para estadísticas/análisis futuro.
     const cacheKey=upper(id);
     if(state.taskHistoryCache.has(cacheKey))return state.taskHistoryCache.get(cacheKey);
+
     const promise=(async()=>{
-      const [oracleRes,d1Res]=await Promise.allSettled([fetchTaskHistoryOracle(id,cur),fetchTaskHistoryD1(id,cur)]);
-      const oracle=oracleRes.status==='fulfilled'?oracleRes.value:[];
-      const d1=d1Res.status==='fulfilled'?d1Res.value:[];
-      const errors=[];
-      if(oracleRes.status==='rejected')errors.push(`Oracle: ${oracleRes.reason?.message||oracleRes.reason}`);
-      if(d1Res.status==='rejected')errors.push(`D1: ${d1Res.reason?.message||d1Res.reason}`);
-      const merged=mergeHistoryRows(oracle,d1);
-      const sources=[oracle.length?'Oracle':'',d1.length?'D1':''].filter(Boolean).join(' + ')||'sin resultados';
-      return {items:merged,sources,error:errors.join(' · ')};
+      try{
+        const items=await fetchTaskHistoryOfsc(id,cur);
+        return {items,sources:'OFSC',error:''};
+      }catch(error){
+        return {
+          items:[],
+          sources:'OFSC',
+          error:String(error?.message||error)
+        };
+      }
     })();
+
     state.taskHistoryCache.set(cacheKey,promise);
     return promise;
   }
   async function openTaskDrawer(id){
     const local=historyForTask(id),cur=state.current.find(r=>taskId(r)===id)||local[0];if(!cur)return;
-    $('#drawer').classList.add('open');$('#drawer').setAttribute('aria-hidden','false');
+    $('#drawer').classList.add('open');$('#drawer').setAttribute('aria-hidden','false');applyHistoryZoom();
     renderTaskDrawer(id,cur,[],{loading:true});
     try{
       const result=await fetchCombinedTaskHistory(id,cur);
       renderTaskDrawer(id,cur,result.items,{error:result.error,sources:result.sources});
     }catch(e){
-      console.error('Histórico combinado',e);
+      console.error('Histórico OFSC',e);
       renderTaskDrawer(id,cur,[],{error:String(e?.message||e)});
     }
   }
@@ -703,7 +932,7 @@
   function renderContractors(){const rows=buildContractorData();$('#contractorsTbody').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="num">${r.mobiles.size}</td><td class="num">${r.tickets}</td><td class="num">${r.completed}</td><td class="num">${r.suspended}</td><td class="num">${r.started}</td><td class="num">${r.assigned}</td><td class="num">${r.enroute}</td><td class="num">${r.scheduled}</td><td class="num">${r.effectiveness.toFixed(1)}%</td></tr>`).join(''):'<tr><td colspan="10" class="empty">Sin resultados</td></tr>';}
 
   function initMap(){if(state.map)return;state.map=L.map('map').setView(C.DEFAULT_MAP_CENTER||[-34.6037,-58.3816],C.DEFAULT_MAP_ZOOM||10);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(state.map);state.markers=L.featureGroup().addTo(state.map);}
-  function updateMap(){if(!$('#mapDetails')?.open)return;initMap();state.markers.clearLayers();for(const r of state.filtered){const lat=Number(r.latitude??r.CoordinateY??r.coordinateY),lng=Number(r.longitude??r.CoordinateX??r.coordinateX);if(!Number.isFinite(lat)||!Number.isFinite(lng))continue;const m=L.marker([lat,lng]).bindPopup(`<strong>${esc(taskId(r))}</strong><br>${esc(node(r))}<br>${esc(tech(r))}<br>${esc(statusEs(r.Estado||r.status))}`);m.on('click',()=>openTaskDrawer(taskId(r)));state.markers.addLayer(m);}const layers=state.markers.getLayers();if(layers.length)state.map.fitBounds(state.markers.getBounds().pad(.08));setTimeout(()=>state.map.invalidateSize(),60);}
+  function updateMap(){if($('#mapModal')?.classList.contains('hidden'))return;initMap();state.markers.clearLayers();for(const r of state.filtered){const lat=Number(r.latitude??r.CoordinateY??r.coordinateY),lng=Number(r.longitude??r.CoordinateX??r.coordinateX);if(!Number.isFinite(lat)||!Number.isFinite(lng))continue;const m=L.marker([lat,lng]).bindPopup(`<strong>${esc(taskId(r))}</strong><br>${esc(node(r))}<br>${esc(tech(r))}<br>${esc(statusEs(r.Estado||r.status))}`);m.on('click',()=>openTaskDrawer(taskId(r)));state.markers.addLayer(m);}const layers=state.markers.getLayers();if(layers.length)state.map.fitBounds(state.markers.getBounds().pad(.08));setTimeout(()=>state.map.invalidateSize(),80);}
 
   function settingsOpen(){}
   function settingsClose(){}
@@ -720,16 +949,24 @@
   function styleCellForRow(cell,key,r){
     const base=xlBaseStyle();cell.s=base;
     if(key==='created'){
-      const cls=createdClass(r);const fill=cls==='created-green'?XL.green:cls==='created-yellow'?XL.yellow:'F4C7AB';
-      cell.s={...base,fill:{fgColor:{rgb:fill}},font:{...base.font,bold:true,color:{rgb:cls==='created-green'?XL.greenText:cls==='created-yellow'?XL.yellowText:'7A3F19'}}};
-    } else if(key==='ageDays'||key==='eventAgeDays'){
-      const a=Number(key==='ageDays'?ageDays(r):eventAgeDays(r));const fill=a>=3?XL.red:a>=2?XL.yellow:XL.green;const color=a>=3?XL.redText:a>=2?XL.yellowText:XL.greenText;
+      const cls=createdClass(r);const fill=cls==='created-white'?'FFFFFF':cls==='created-green'?XL.green:cls==='created-yellow'?XL.yellow:'F4C7AB';
+      const color=cls==='created-white'?'17263A':cls==='created-green'?XL.greenText:cls==='created-yellow'?XL.yellowText:'7A3F19';
+      cell.s={...base,fill:{fgColor:{rgb:fill}},font:{...base.font,bold:true,color:{rgb:color}}};
+    } else if(key==='ageDays'){
+      const cls=taskAgeClass(r);const fill=cls==='age-white'?'FFFFFF':cls==='age-green'?XL.green:cls==='age-yellow'?XL.yellow:XL.red;const color=cls==='age-white'?'17263A':cls==='age-green'?XL.greenText:cls==='age-yellow'?XL.yellowText:XL.redText;
+      cell.s={...base,fill:{fgColor:{rgb:fill}},font:{...base.font,bold:true,color:{rgb:color}}};
+    } else if(key==='eventAgeDays'){
+      const a=Number(eventAgeDays(r));const fill=a>=3?XL.red:a>=2?XL.yellow:XL.green;const color=a>=3?XL.redText:a>=2?XL.yellowText:XL.greenText;
       cell.s={...base,fill:{fgColor:{rgb:fill}},font:{...base.font,bold:true,color:{rgb:color}}};
     } else if(key==='status'){
       const k=statusKey(r.Estado||r.status);const map={started:['FFEB9C','815F00'],suspended:['FFD7DC','A12734'],assigned:['DCE9FF','215CAD'],enroute:['D8EEF7','1C617A'],scheduled:['EADCFF','64409B'],completed:['D8F4E6','00734A'],cancelled:['ECE7FF','6038A8']};
       if(map[k])cell.s={...base,fill:{fgColor:{rgb:map[k][0]}},font:{...base.font,bold:true,color:{rgb:map[k][1]}}};
     } else if(key==='capa'){
       const c=capaClass(capa(r));const fill={edificio:XL.blue,fibra:XL.fibra,infra:XL.infra,usac:XL.usac}[c];if(fill)cell.s={...base,fill:{fgColor:{rgb:fill}}};
+    } else if(key==='origin'&&originClass(origin(r))==='externo'){
+      cell.s={...base,fill:{fgColor:{rgb:XL.infra}}};
+    } else if(key==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))){
+      cell.s={...base,fill:{fgColor:{rgb:XL.red}},font:{...base.font,bold:true,color:{rgb:XL.redText}}};
     } else if(key==='affected'){
       const yes=/^SI$/i.test(affected(r));cell.s={...base,fill:{fgColor:{rgb:yes?XL.yellow:XL.green}},font:{...base.font,bold:true,color:{rgb:yes?XL.yellowText:XL.greenText}}};
     }
@@ -738,7 +975,18 @@
     for(let c=0;c<cols.length;c++){
       const addr=XLSX.utils.encode_cell({r:0,c});if(ws[addr])ws[addr].s={fill:{fgColor:{rgb:XL.dark}},font:{name:'Arial',sz:10,bold:true,color:{rgb:XL.white}},alignment:{horizontal:'center',vertical:'center'},border:xlBorder()};
     }
-    rows.forEach((r,ri)=>cols.forEach(([key],ci)=>{const cell=ws[XLSX.utils.encode_cell({r:ri+1,c:ci})];if(cell)styleCellForRow(cell,key,r);}));
+    const dups=duplicateSets(rows);
+    rows.forEach((r,ri)=>{
+      cols.forEach(([key],ci)=>{
+        const cell=ws[XLSX.utils.encode_cell({r:ri+1,c:ci})];
+        if(!cell)return;
+        styleCellForRow(cell,key,r);
+        const dup=(key==='node'&&dups.nodes.has(upper(node(r))))||(key==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));
+        if(dup){
+          cell.s={...cell.s,fill:{fgColor:{rgb:XL.green}},font:{...(cell.s?.font||{}),bold:true,color:{rgb:XL.greenText}}};
+        }
+      });
+    });
     ws['!cols']=cols.map(([k,l])=>({wch:Math.max(10,Math.min(28,l.length+6,k==='task'?18:k==='created'?20:k==='scheduled'?13:14))}));
     ws['!autofilter']={ref:`A1:${XLSX.utils.encode_col(Math.max(0,cols.length-1))}${rows.length+1}`};
     ws['!freeze']={xSplit:0,ySplit:1};
@@ -756,6 +1004,7 @@
       const val=ws[XLSX.utils.encode_cell({r,c:1})];
       if(cell&&/^Tareas \+72hs$/i.test(label)){cell.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.red}}};if(val)val.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.red}},font:{name:'Arial',sz:10,bold:true,color:{rgb:XL.redText}}};}
       if(cell&&/^Tareas 48/i.test(label)){cell.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.yellow}}};if(val)val.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.yellow}},font:{name:'Arial',sz:10,bold:true,color:{rgb:XL.yellowText}}};}
+      if(cell&&/^Tareas 24/i.test(label)){cell.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.green}}};if(val)val.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.green}},font:{name:'Arial',sz:10,bold:true,color:{rgb:XL.greenText}}};}
       if(cell&&/^Fibra$/i.test(label)){cell.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.fibra}}};if(val)val.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.fibra}},font:{name:'Arial',sz:10,bold:true}};}
       if(cell&&/^Red \+ Energía$/i.test(label)){cell.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.usac}}};if(val)val.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.usac}},font:{name:'Arial',sz:10,bold:true}};}
       if(cell&&/^Infra$/i.test(label)){cell.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.infra}}};if(val)val.s={...xlBaseStyle(),fill:{fgColor:{rgb:XL.infra}},font:{name:'Arial',sz:10,bold:true}};}
@@ -766,6 +1015,7 @@
   function kpiBoxType(label){
     if(/\+72/i.test(label))return 'danger';
     if(/48.?72/i.test(label))return 'warning';
+    if(/24.?48/i.test(label))return 'success';
     if(/^Caídas /i.test(label))return 'danger';
     if(/^Infra$/i.test(label))return 'danger';
     if(/^Fibra$/i.test(label))return 'fibra';
@@ -777,6 +1027,7 @@
     const type=kpiBoxType(label);
     if(type==='danger')return {fill:XL.red,text:XL.redText};
     if(type==='warning')return {fill:XL.yellow,text:XL.yellowText};
+    if(type==='success')return {fill:XL.green,text:XL.greenText};
     if(type==='fibra')return {fill:XL.fibra,text:'8A6400'};
     if(type==='usac')return {fill:XL.usac,text:'355E3B'};
     if(type==='edificio')return {fill:XL.blue,text:'1F4E79'};
@@ -784,16 +1035,20 @@
   }
   function captureAffectedClass(r){if(/^SI$/i.test(affected(r)))return 'affected-yes'; if(/^NO$/i.test(affected(r)))return 'affected-no'; return ''; }
   function captureStatusPill(r){const k=statusKey(r.Estado||r.status);return `<span class="status-pill ${k}">${esc(statusEs(r.Estado||r.status))}</span>`;}
-  function captureCellHtml(r,key){
+  function captureCellHtml(r,key,dups=null){
     if(key==='created'){const cls=createdClass(r);return `<td class="${cls}">${esc(rowValueByColumn(r,'created'))}</td>`;}
     if(key==='affected'){const cls=captureAffectedClass(r);return `<td class="${cls}">${esc(affected(r)||'—')}</td>`;}
     if(key==='priority'){return `<td>${esc(priority(r)||'—')}</td>`;}
     if(key==='status'){return `<td>${captureStatusPill(r)}</td>`;}
-    if(key==='ageDays'){const cls=ageClass(ageDays(r));return `<td class="${cls}">${esc(ageDays(r)??'—')}</td>`;}
-    if(key==='eventAgeDays'){const cls=ageClass(eventAgeDays(r));return `<td class="${cls}">${esc(eventAgeDays(r)??'—')}</td>`;}
+    if(key==='ageDays'){const cls=taskAgeClass(r);return `<td class="${cls}">${esc(ageDays(r)??'—')}</td>`;}
+    if(key==='eventAgeDays'){const cls=eventAgeClass(eventAgeDays(r));return `<td class="${cls}">${esc(eventAgeDays(r)??'—')}</td>`;}
     if(key==='scheduled'){return `<td>${esc(formatDateOnly(scheduled(r)))}</td>`;}
+    if(key==='tipif'){const v=siglaTarea(r);return `<td class="${['VFF','FMR','VFE'].includes(upper(v))?'tipif-alert':''}">${esc(v)}</td>`;}
+    if(key==='capa'){return `<td class="capa-cell ${capaClass(capa(r))}">${esc(capa(r)||'—')}</td>`;}
+    if(key==='origin'){return `<td class="origin-cell ${originClass(origin(r))}">${esc(origin(r)||'—')}</td>`;}
     const value = key==='task'?taskId(r):key==='node'?node(r):key==='tipif'?siglaTarea(r):key==='subcapa'?subcapa(r):key==='origin'?origin(r):key==='event'?(oracleEvent(r)||parentEvent(r)):key==='parentEvent'?parentEvent(r):key==='contractor'?contractor(r):rowValueByColumn(r,key);
-    return `<td>${esc(value)}</td>`;
+    const duplicate=dups&&((key==='node'&&dups.nodes.has(upper(node(r))))||(key==='parentEvent'&&dups.parents.has(upper(parentEvent(r)))));
+    return `<td class="${duplicate?'duplicate-green':''}">${esc(value)}</td>`;
   }
 
   function createdTimestamp(r){
@@ -804,13 +1059,13 @@
   function capturePriorityGroups(rows){
     const red=[],yellow=[],normal=[];
     for(const r of rows){
-      const a=Number(ageDays(r));
-      if(Number.isFinite(a)&&a>=3)red.push(r);
-      else if(Number.isFinite(a)&&a>=2)yellow.push(r);
+      const h=createdAgeHours(r);
+      if(Number.isFinite(h)&&h>=72)red.push(r);
+      else if(Number.isFinite(h)&&h>=48)yellow.push(r);
       else normal.push(r);
     }
     const byAgeThenCreated=(a,b)=>{
-      const ad=Number(ageDays(a)),bd=Number(ageDays(b));
+      const ad=createdAgeHours(a),bd=createdAgeHours(b);
       if(Number.isFinite(ad)&&Number.isFinite(bd)&&ad!==bd)return bd-ad;
       return createdTimestamp(a)-createdTimestamp(b);
     };
@@ -838,18 +1093,17 @@
     return pages.filter(p=>p.length);
   }
 
-  function contractorCaptureCardHtml(contractorName,allRows,previewRows,pageIndex=0,pageCount=1){
+  function contractorCaptureCardHtml(contractorName,allRows,previewRows,cols,pageIndex=0,pageCount=1){
+    const captureDups=duplicateSets(allRows);
     const kpis=computeKpisForRows(allRows);
-    const top=kpis.slice(0,7), bottom=kpis.slice(7,14);
+    const top=kpis.slice(0,8), bottom=kpis.slice(8,15);
     const now=new Date();
-    const previewCols=['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled'];
-    const previewHeaders=['Tarea','Creado','Afectación','Prioridad','Nodo','Tipif','Estado','Subcapa','Origen','Ticket Evento','Evento Padre','Antigüedad','Antigüedad Evento','Contratista','Agendado'];
     const pageText=pageCount>1?` · captura ${pageIndex+1}/${pageCount}`:'';
-    return `<div class="export-capture-card excel-like"><div class="export-capture-title">Consulta ETA · ${esc(contractorName)}</div><div class="export-capture-sub">Resumen operativo · ${esc(currentRange().from)} → ${esc(currentRange().to)} · generado ${esc(now.toLocaleString('es-AR'))}${pageText}</div><div class="excel-kpi-grid">${top.map(([l,v])=>`<div class="excel-kpi ${kpiCaptureClass(l)}"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div><div class="excel-kpi-grid second">${bottom.map(([l,v])=>`<div class="excel-kpi ${kpiCaptureClass(l)}"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div><table class="export-capture-preview"><thead><tr>${previewHeaders.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${previewRows.map(r=>`<tr>${previewCols.map(key=>captureCellHtml(r,key)).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="export-capture-card excel-like"><div class="export-capture-title">Consulta ETA · ${esc(contractorName)}</div><div class="export-capture-sub">Resumen operativo · ${esc(currentRange().from)} → ${esc(currentRange().to)} · generado ${esc(now.toLocaleString('es-AR'))}${pageText}</div><div class="excel-kpi-grid">${top.map(([l,v])=>`<div class="excel-kpi ${kpiCaptureClass(l)}"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div><div class="excel-kpi-grid second">${bottom.map(([l,v])=>`<div class="excel-kpi ${kpiCaptureClass(l)}"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div><table class="export-capture-preview"><thead><tr>${cols.map(([,label])=>`<th>${esc(label)}</th>`).join('')}</tr></thead><tbody>${previewRows.map(r=>`<tr>${cols.map(([key])=>captureCellHtml(r,key,captureDups)).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
   function buildTaskSheetData(rows,cols){
     const kpis=computeKpisForRows(rows);
-    const top=kpis.slice(0,7), bottom=kpis.slice(7,14);
+    const top=kpis.slice(0,8), bottom=kpis.slice(8,15);
     const headerOffset=5;
     const data=[];
     data.push(top.map(([l])=>l));
@@ -862,7 +1116,7 @@
   }
   function styleTasksSheetWithSummary(ws,rows,cols){
     const computed=computeKpisForRows(rows);const {headerOffset}=buildTaskSheetData(rows,cols);
-    for(let r=0;r<4;r++) for(let c=0;c<Math.min(7,cols.length);c++){const addr=XLSX.utils.encode_cell({r,c});if(ws[addr]){const label=(r<2?computed.slice(0,7):computed.slice(7,14))[c]?.[0]||'';const pal=kpiPalette(label);ws[addr].s={font:{name:'Arial',sz:r%2===0?9:13,bold:true,color:{rgb:pal.text}},alignment:{horizontal:'center',vertical:'center',wrapText:true},fill:{fgColor:{rgb:pal.fill}},border:xlBorder()};}}
+    for(let r=0;r<4;r++) for(let c=0;c<Math.min(8,cols.length);c++){const addr=XLSX.utils.encode_cell({r,c});if(ws[addr]){const label=(r<2?computed.slice(0,8):computed.slice(8,15))[c]?.[0]||'';const pal=kpiPalette(label);ws[addr].s={font:{name:'Arial',sz:r%2===0?9:13,bold:true,color:{rgb:pal.text}},alignment:{horizontal:'center',vertical:'center',wrapText:true},fill:{fgColor:{rgb:pal.fill}},border:xlBorder()};}}
     for(let c=0;c<cols.length;c++){const addr=XLSX.utils.encode_cell({r:headerOffset-1,c});if(ws[addr])ws[addr].s={fill:{fgColor:{rgb:XL.dark}},font:{name:'Arial',sz:10,bold:true,color:{rgb:XL.white}},alignment:{horizontal:'center',vertical:'center'},border:xlBorder()};}
     rows.forEach((r,ri)=>cols.forEach(([key],ci)=>{const cell=ws[XLSX.utils.encode_cell({r:headerOffset+ri,c:ci})];if(cell)styleCellForRow(cell,key,r);}));
     ws['!rows']=[{hpt:24},{hpt:24},{hpt:24},{hpt:24},{hpt:20}];
@@ -903,6 +1157,7 @@
   function kpiCaptureClass(label){
     if(/\+72/i.test(label))return'age-red';
     if(/48.?72/i.test(label))return'age-yellow';
+    if(/24.?48/i.test(label))return'age-green';
     if(/^Caídas /i.test(label))return'kpi-danger';
     if(/^Fibra$/i.test(label))return'capa-fibra';
     if(/^Red \+ Energía$/i.test(label))return'capa-usac';
@@ -910,18 +1165,24 @@
     if(/^Edificio$/i.test(label))return'capa-edificio';
     return'';
   }
-  async function makeContractorDashboardImages(contractorName,rows){
+  async function makeContractorDashboardImages(contractorName,rows,cols){
     if(typeof html2canvas==='undefined')return [];
     const pages=buildCapturePages(rows,18);
     const images=[];
     for(let i=0;i<pages.length;i++){
       const host=document.createElement('div');host.className='export-capture-host';
-      host.innerHTML=contractorCaptureCardHtml(contractorName,rows,pages[i],i,pages.length);
+      host.innerHTML=contractorCaptureCardHtml(contractorName,rows,pages[i],cols,i,pages.length);
       document.body.appendChild(host);
       try{
         await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
         const canvas=await html2canvas(host,{backgroundColor:'#f4f7fb',scale:1.35,useCORS:true,logging:false});
-        images.push(canvas.toDataURL('image/png'));
+
+        // Generamos un PNG binario real. Evita depender de dataURL/base64 y
+        // produce entradas ZIP más estándar para el Explorador de Windows.
+        const pngBlob=await new Promise((resolve,reject)=>{
+          canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('No se pudo generar la captura PNG')),'image/png');
+        });
+        images.push(pngBlob);
       }finally{host.remove();}
       await new Promise(resolve=>setTimeout(resolve,0));
     }
@@ -935,11 +1196,19 @@
   function excelJsApplyTaskCellStyle(cell,key,r){
     cell.font={name:'Arial',size:10,color:{argb:'FF17263A'}};cell.alignment={vertical:'middle'};cell.border=excelJsThinBorder();
     if(key==='created'){
-      const cls=createdClass(r),fill=cls==='created-green'?'C6EFCE':cls==='created-yellow'?'FFEB9C':'F4C7AB';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(cls==='created-green'?'007D51':cls==='created-yellow'?'8A6400':'7A3F19')}};
-    } else if(key==='ageDays'||key==='eventAgeDays'){
-      const a=Number(key==='ageDays'?ageDays(r):eventAgeDays(r)),fill=a>=3?'FFC7CE':a>=2?'FFEB9C':'C6EFCE',color=a>=3?'9C0006':a>=2?'8A6400':'007D51';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
+      const cls=createdClass(r),fill=cls==='created-white'?'FFFFFF':cls==='created-green'?'C6EFCE':cls==='created-yellow'?'FFEB9C':'F4C7AB';const color=cls==='created-white'?'17263A':cls==='created-green'?'007D51':cls==='created-yellow'?'8A6400':'7A3F19';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
+    } else if(key==='ageDays'){
+      const cls=taskAgeClass(r),fill=cls==='age-white'?'FFFFFF':cls==='age-green'?'C6EFCE':cls==='age-yellow'?'FFEB9C':'FFC7CE',color=cls==='age-white'?'17263A':cls==='age-green'?'007D51':cls==='age-yellow'?'8A6400':'9C0006';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
+    } else if(key==='eventAgeDays'){
+      const a=Number(eventAgeDays(r)),fill=a>=3?'FFC7CE':a>=2?'FFEB9C':'C6EFCE',color=a>=3?'9C0006':a>=2?'8A6400':'007D51';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
     } else if(key==='status'){
       const map={started:['FFEB9C','815F00'],suspended:['FFD7DC','A12734'],assigned:['DCE9FF','215CAD'],enroute:['D8EEF7','1C617A'],scheduled:['EADCFF','64409B'],completed:['D8F4E6','00734A'],cancelled:['ECE7FF','6038A8']};const m=map[statusKey(r.Estado||r.status)];if(m){cell.fill=excelJsFill(m[0]);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(m[1])}};}
+    } else if(key==='capa'){
+      const c=capaClass(capa(r)),fill={edificio:'D9EAFA',fibra:'FFE69A',infra:'FFC2CA',usac:'D8EFD0'}[c];if(fill)cell.fill=excelJsFill(fill);
+    } else if(key==='origin'&&originClass(origin(r))==='externo'){
+      cell.fill=excelJsFill('FFC2CA');cell.font={name:'Arial',size:10,color:{argb:'FF9C0006'}};
+    } else if(key==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))){
+      cell.fill=excelJsFill('FFC7CE');cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb('9C0006')}};
     } else if(key==='affected'){
       const yes=/^SI$/i.test(affected(r));cell.fill=excelJsFill(yes?'FFEB9C':'C6EFCE');cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(yes?'8A6400':'007D51')}};
     }
@@ -952,7 +1221,8 @@
     const writeKpiRow=(rowNum,items,isValue=false)=>{items.forEach(([label,val],idx)=>{const cell=ws.getRow(rowNum).getCell(idx+1);cell.value=isValue?val:label;const pal=kpiPalette(label);cell.fill=excelJsFill(pal.fill);cell.font={name:'Arial',size:isValue?13:9,bold:true,color:{argb:excelJsArgb(pal.text)}};cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};cell.border=excelJsThinBorder();});};
     writeKpiRow(1,top,false);writeKpiRow(2,top,true);writeKpiRow(3,bottom,false);writeKpiRow(4,bottom,true);
     const hr=ws.getRow(5);cols.forEach(([k,l],i)=>hr.getCell(i+1).value=l);hr.height=22;hr.eachCell(cell=>{cell.fill=excelJsFill('162230');cell.font={name:'Arial',size:10,bold:true,color:{argb:'FFFFFFFF'}};cell.alignment={horizontal:'center',vertical:'middle'};cell.border=excelJsThinBorder();});
-    rows.forEach(r=>{const row=ws.addRow(Object.fromEntries(cols.map(([k])=>[k,rowValueByColumn(r,k)])));cols.forEach(([k],i)=>excelJsApplyTaskCellStyle(row.getCell(i+1),k,r));});
+    const workbookDups=duplicateSets(rows);
+    rows.forEach(r=>{const row=ws.addRow(Object.fromEntries(cols.map(([k])=>[k,rowValueByColumn(r,k)])));cols.forEach(([k],i)=>{const cell=row.getCell(i+1);excelJsApplyTaskCellStyle(cell,k,r);const dup=(k==='node'&&workbookDups.nodes.has(upper(node(r))))||(k==='parentEvent'&&workbookDups.parents.has(upper(parentEvent(r))));if(dup){cell.fill=excelJsFill('C6EFCE');cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb('007D51')}};}});});
     ws.autoFilter=`A5:${excelColName(cols.length)}${Math.max(5,rows.length+5)}`;
 
     const rs=wb.addWorksheet('Resumen KPI');
@@ -980,17 +1250,59 @@
   function visibleColumnDefs(){return COLUMN_DEFS.filter(([k])=>!state.hiddenColumns.has(k));}
   function excelSheetName(name,used){let base=String(name||'Sin Contratista').replace(/[\\\/?*\[\]:]/g,' ').trim().slice(0,31)||'Sin Contratista',n=1,out=base;while(used.has(out)){const suf=`_${n++}`;out=(base.slice(0,31-suf.length)+suf);}used.add(out);return out;}
   function dailyStateExportRows(){const now=new Date(),todayKey=localDayKey(now),y=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1),yKey=localDayKey(y);const defs=[['completed','Completados'],['suspended','Suspendidos'],['cancelled','Cancelados'],['notdone','No realizados']];const m=new Map(defs.map(([k,l])=>[k,{label:l,t:new Set(),y:new Set()}]));for(const r of movementRowsForDailyState()){const d=movementDate(r);if(!d)continue;const dk=localDayKey(d);if(dk!==todayKey&&dk!==yKey)continue;const b=m.get(statusKey(r.Estado||r.status));if(!b)continue;(dk===todayKey?b.t:b.y).add(taskId(r));}return defs.map(([k])=>[m.get(k).label,m.get(k).y.size,m.get(k).t.size]);}
+  function dailyStateRowsForExport(status,dayKey){
+    const map=new Map();
+    for(const r of movementRowsForDailyState()){
+      const d=movementDate(r);if(!d||localDayKey(d)!==dayKey)continue;
+      if(statusKey(r.Estado||r.estado||r.status)!==status)continue;
+      const id=taskId(r)||`${resource(r)}|${d.getTime()}|${status}`;
+      const prev=map.get(id);
+      if(!prev||movementDate(prev)?.getTime()<=d.getTime())map.set(id,r);
+    }
+    return [...map.values()].sort((a,b)=>(movementDate(b)?.getTime()||0)-(movementDate(a)?.getTime()||0));
+  }
+  function dailyStateLabel(status){return ({completed:'Completados',suspended:'Suspendidos',cancelled:'Cancelados',notdone:'No_realizados'})[status]||status;}
+  function exportDailyStateTickets(status,dayKey){
+    if(typeof XLSX==='undefined'){showToast('No se pudo cargar la librería Excel.');return;}
+    const rows=dailyStateRowsForExport(status,dayKey);
+    if(!rows.length){showToast('No hay tickets para exportar en esa celda.');return;}
+    const cols=visibleColumnDefs();
+    if(!cols.length){showToast('No hay columnas visibles para exportar.');return;}
+    const wb=buildStyledTasksWorkbook(rows,cols);
+    const safeDay=String(dayKey||'').replace(/[^0-9-]/g,'');
+    XLSX.writeFile(wb,`ETA_${dailyStateLabel(status)}_${safeDay}.xlsx`,{cellStyles:true});
+    showToast(`Excel generado: ${rows.length} ticket(s)`);
+  }
+  function dailyAllRowsForExport(dayKey){
+    const allowed=new Set(['completed','suspended','cancelled','notdone']),map=new Map();
+    for(const r of movementRowsForDailyState()){
+      const d=movementDate(r);if(!d||localDayKey(d)!==dayKey)continue;
+      const sk=statusKey(r.Estado||r.estado||r.status);if(!allowed.has(sk))continue;
+      const id=taskId(r)||`${resource(r)}|${d.getTime()}|${sk}`;const prev=map.get(id);
+      if(!prev||(movementDate(prev)?.getTime()||0)<=d.getTime())map.set(id,r);
+    }
+    return [...map.values()].sort((a,b)=>(movementDate(b)?.getTime()||0)-(movementDate(a)?.getTime()||0));
+  }
+  function exportDailyAllTickets(dayKey){
+    if(typeof XLSX==='undefined'){showToast('No se pudo cargar la librería Excel.');return;}
+    const rows=dailyAllRowsForExport(dayKey);if(!rows.length){showToast('No hay tickets para exportar en ese día.');return;}
+    const cols=visibleColumnDefs();if(!cols.length){showToast('No hay columnas visibles para exportar.');return;}
+    const wb=buildStyledTasksWorkbook(rows,cols);const safeDay=String(dayKey||'').replace(/[^0-9-]/g,'');
+    XLSX.writeFile(wb,`ETA_Todos_estados_${safeDay}.xlsx`,{cellStyles:true});showToast(`Excel generado: ${rows.length} ticket(s)`);
+  }
+
   function computeKpisForRows(rows){
     const count=p=>rows.filter(p).length,unique=p=>new Set(rows.filter(p).map(taskId)).size;
     const eventDays=r=>{const x=taskEventDate(r);return x?Math.max(0,(Date.now()-x.getTime())/86400000):null};
-    const ages=rows.map(ageDays).filter(Number.isFinite);
-    const oldest=ages.length?Math.max(...ages):0;
+    const hours=rows.map(createdAgeHours).filter(Number.isFinite);
+    const oldestHours=hours.length?Math.max(...hours):0;
     const layer=r=>capa(r).toLowerCase();
     return [
-      ['Tickets Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],
-      ['Tareas +72hs',count(r=>ageDays(r)>=3),''],
-      ['Tareas 48–72hs',count(r=>ageDays(r)>=2&&ageDays(r)<3),''],
-      ['Tarea más antigua',`${Math.floor(oldest)} días`,''],
+      ['Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],
+      ['+72hs',count(r=>(createdAgeHours(r)??-1)>=72),''],
+      ['48–72hs',count(r=>{const h=createdAgeHours(r);return h!==null&&h>=48&&h<72;}),''],
+      ['24–48hs',count(r=>{const h=createdAgeHours(r);return h!==null&&h>=24&&h<48;}),''],
+      ['Más antigua',`${Math.floor(oldestHours/24)} días`,''],
       ['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],
       ['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],
       ['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],
@@ -998,9 +1310,9 @@
       ['Red + Energía',unique(r=>layer(r).includes('usac')),''],
       ['Infra',unique(r=>layer(r)==='infra'),''],
       ['Edificio',unique(r=>layer(r)==='edificio'),''],
-      ['Eventos +2d',count(r=>(eventDays(r)??-1)>=2),''],
-      ['Eventos +3d',count(r=>(eventDays(r)??-1)>=3),''],
-      ['Eventos +7d',count(r=>(eventDays(r)??-1)>=7),'']
+      ['Ev +2d',count(r=>(eventDays(r)??-1)>=2),''],
+      ['Ev +3d',count(r=>(eventDays(r)??-1)>=3),''],
+      ['Ev +7d',count(r=>(eventDays(r)??-1)>=7),'']
     ];
   }
 
@@ -1018,7 +1330,14 @@
   }
 
   function safeFilePart(value){
-    return String(value||'Sin_Contratista').trim().replace(/[\/:*?"<>|]/g,'_').replace(/\s+/g,'_').slice(0,80)||'Sin_Contratista';
+    return String(value||'Sin_Contratista')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .trim()
+      .replace(/[\/:*?"<>|]/g,'_')
+      .replace(/\s+/g,'_')
+      .replace(/[^A-Za-z0-9._-]/g,'_')
+      .replace(/_+/g,'_')
+      .slice(0,80)||'Sin_Contratista';
   }
 
   function buildContractorWorkbook(contractorName,rows,cols){
@@ -1059,30 +1378,42 @@
         let bytes;
         let images=[];
         if(typeof html2canvas!=='undefined'){
-          images=await makeContractorDashboardImages(c,rows);
-          images.forEach((png,idx)=>{
+          images=await makeContractorDashboardImages(c,rows,cols);
+          images.forEach((pngBlob,idx)=>{
             const suffix=images.length>1?`_${String(idx+1).padStart(2,'0')}`:'';
-            zip.file(`${safeFilePart(c)}_${stamp}${suffix}.png`,png.split(',')[1],{base64:true});
+            zip.file(`${safeFilePart(c)}_${stamp}${suffix}.png`,pngBlob,{
+              binary:true,
+              compression:'DEFLATE',
+              compressionOptions:{level:6}
+            });
           });
         }
-        if(typeof ExcelJS!=='undefined'){
-          const wb=await buildContractorWorkbookExcelJS(c,rows,cols,null);
-          bytes=await wb.xlsx.writeBuffer();
-        }else{
-          const wb=buildContractorWorkbook(c,rows,cols);
-          bytes=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});
-        }
+        // Misma estructura y motor que el botón Excel: Tareas + Resumen KPI,
+        // mismas columnas visibles, mismo orden y mismos estilos.
+        const wb=buildContractorWorkbook(c,rows,cols);
+        bytes=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});
         zip.file(`${safeFilePart(c)}_${stamp}.xlsx`,bytes);
         if(i%3===0)await new Promise(resolve=>setTimeout(resolve,0));
       }
 
       if(btn)btn.textContent='Comprimiendo…';
-      const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+
+      // Generación explícita como bytes ZIP + MIME estándar.
+      // platform:'DOS' evita atributos UNIX innecesarios en archivos destinados a Windows.
+      const zipBytes=await zip.generateAsync({
+        type:'uint8array',
+        platform:'DOS',
+        compression:'DEFLATE',
+        compressionOptions:{level:6}
+      });
+      const blob=new Blob([zipBytes],{type:'application/zip'});
+      const objectUrl=URL.createObjectURL(blob);
       const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
+      a.href=objectUrl;
       a.download=`Export_Contratistas_${stamp}.zip`;
+      a.rel='noopener';
       document.body.appendChild(a);a.click();a.remove();
-      setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+      setTimeout(()=>URL.revokeObjectURL(objectUrl),5000);
       showToast(`ZIP generado: ${groups.size} Excel(s) + capturas prioritarias por contratista`);
     }catch(error){
       console.error(error);
@@ -1097,6 +1428,57 @@
   function renderHistorico(){const tb=$('#histTbody'),rows=state.histData;if(!rows.length){tb.innerHTML='<tr><td colspan="11" class="empty">Sin resultados</td></tr>';return;}tb.innerHTML=rows.map(r=>`<tr><td><strong>${esc(taskId(r))}</strong></td><td>${esc(fmt(r.FechaIntervencion||r.fecha_intervencion||r.date))}</td><td>${esc(formatDate(startValue(r)))}</td><td>${esc(formatDate(endValue(r)))}</td><td>${badgeStatus(r.Estado||r.estado||r.status)}</td><td>${esc(tree(r))}</td><td>${esc(node(r))}</td><td>${esc(contractor(r))}</td><td>${esc(tech(r))}</td><td>${esc(affected(r))}</td><td>${esc(eventCode(r))}</td></tr>`).join('');}
 
 
+  function updateTableHorizontalScroller(){
+    const scroller=$('.table-scroll'),bar=$('#tableHScroll'),inner=$('#tableHScrollInner');
+    if(!scroller||!bar||!inner)return;
+    inner.style.width=`${Math.max(scroller.clientWidth,scroller.scrollWidth)}px`;
+    if(Math.abs(bar.scrollLeft-scroller.scrollLeft)>1)bar.scrollLeft=scroller.scrollLeft;
+  }
+  function installTableHorizontalScroller(){
+    const scroller=$('.table-scroll'),bar=$('#tableHScroll');
+    if(!scroller||!bar||bar.dataset.bound==='1')return;
+    bar.dataset.bound='1';
+    let syncing=false;
+    bar.addEventListener('scroll',()=>{if(syncing)return;syncing=true;scroller.scrollLeft=bar.scrollLeft;requestAnimationFrame(()=>syncing=false);});
+    scroller.addEventListener('scroll',()=>{if(syncing)return;syncing=true;bar.scrollLeft=scroller.scrollLeft;requestAnimationFrame(()=>syncing=false);});
+    window.addEventListener('resize',updateTableHorizontalScroller);
+    if('ResizeObserver' in window){const ro=new ResizeObserver(updateTableHorizontalScroller);ro.observe(scroller);ro.observe($('#opTable'));state._tableResizeObserver=ro;}
+    requestAnimationFrame(updateTableHorizontalScroller);
+  }
+  function applyTableZoom(){
+    const card=$('#subview-tasks'),label=$('#tableZoomLabel');
+    if(!card)return;
+    const z=Math.max(80,Math.min(110,Number(state.tableZoom)||90));
+    state.tableZoom=z;
+    card.classList.remove('table-density-80','table-density-90','table-density-100','table-density-110');
+    card.classList.add(`table-density-${z}`);
+    if(label)label.textContent=`${z}%`;
+    requestAnimationFrame(updateTableHorizontalScroller);
+  }
+  function changeTableZoom(delta){
+    const levels=[80,90,100,110];
+    let idx=levels.indexOf(state.tableZoom);if(idx<0)idx=1;
+    idx=Math.max(0,Math.min(levels.length-1,idx+delta));
+    state.tableZoom=levels[idx];applyTableZoom();
+  }
+
+
+  function applyHistoryZoom(){
+    const panel=document.querySelector('#drawer .drawer-panel'),label=$('#historyZoomLabel');
+    if(!panel)return;
+    const levels=[85,100,115,130];
+    const z=levels.includes(Number(state.historyZoom))?Number(state.historyZoom):100;
+    state.historyZoom=z;
+    panel.classList.remove(...levels.map(v=>`history-zoom-${v}`));
+    panel.classList.add(`history-zoom-${z}`);
+    if(label)label.textContent=`${z}%`;
+  }
+  function changeHistoryZoom(delta){
+    const levels=[85,100,115,130];
+    let idx=levels.indexOf(Number(state.historyZoom));if(idx<0)idx=1;
+    idx=Math.max(0,Math.min(levels.length-1,idx+delta));
+    state.historyZoom=levels[idx];applyHistoryZoom();
+  }
   function sideMenuOpen(open=true){
     const menu=$('#sideMenu'),back=$('#sideBackdrop'),btn=$('#btnMenu');if(!menu)return;
     menu.classList.toggle('open',open);menu.setAttribute('aria-hidden',String(!open));back?.classList.toggle('hidden',!open);btn?.setAttribute('aria-expanded',String(open));
@@ -1130,18 +1512,24 @@
   $('#btnRefresh').onclick=e=>{flashButton(e.currentTarget);loadAllOperativo(true);};
   $('#btnApplyFilters').onclick=e=>{flashButton(e.currentTarget);applyFilters();showToast('Filtros aplicados');};
   $('#btnClearFilters').onclick=e=>{flashButton(e.currentTarget);resetFilters();showToast('Filtros restablecidos');};
-  $('#btnToggleMap').onclick=e=>{const d=$('#mapDetails');d.open=!d.open;e.currentTarget.setAttribute('aria-pressed',String(d.open));e.currentTarget.title=d.open?'Ocultar mapa':'Mostrar mapa';flashButton(e.currentTarget);if(d.open)updateMap();};
-  $('#mapDetails').addEventListener('toggle',()=>{const open=$('#mapDetails').open;$('#btnToggleMap').setAttribute('aria-pressed',String(open));$('#btnToggleMap').title=open?'Ocultar mapa':'Mostrar mapa';$('#mapSummary').textContent=open?'Visible':'Colapsado';if(open)updateMap();});
+  function openMapModal(){const modal=$('#mapModal');if(!modal)return;modal.classList.remove('hidden');modal.setAttribute('aria-hidden','false');$('#btnToggleMap')?.setAttribute('aria-pressed','true');updateMap();}
+  function closeMapModal(){const modal=$('#mapModal');if(!modal)return;modal.classList.add('hidden');modal.setAttribute('aria-hidden','true');$('#btnToggleMap')?.setAttribute('aria-pressed','false');}
+  $('#btnToggleMap').onclick=e=>{flashButton(e.currentTarget);openMapModal();};
+  $('#btnMapClose').onclick=closeMapModal;
+  $('#mapModal').addEventListener('click',e=>{if(e.target===$('#mapModal'))closeMapModal();});
   function scrollTaskTableToTop(){const scroller=document.querySelector('.table-scroll');if(scroller)scroller.scrollTo({top:0,behavior:'smooth'});const card=document.querySelector('#subview-tasks');if(card)card.scrollIntoView({block:'start',behavior:'smooth'});}
   $('#opPrev').onclick=()=>{if(state.page>1){state.page--;renderTable();scrollTaskTableToTop();}};$('#opNext').onclick=()=>{const pages=Math.ceil(state.filtered.length/PAGE_SIZE);if(state.page<pages){state.page++;renderTable();scrollTaskTableToTop();}};
   $('#opSearch').oninput=()=>{clearTimeout(state._q);state._q=setTimeout(applyFilters,160);};
   $('#btnExportTasks').onclick=exportTasks;$('#btnExportExcel').onclick=exportExcelByContractor;
+  $('#btnTableZoomOut').onclick=()=>changeTableZoom(-1);$('#btnTableZoomIn').onclick=()=>changeTableZoom(1);
+  $('#btnHistoryZoomOut').onclick=()=>changeHistoryZoom(-1);$('#btnHistoryZoomIn').onclick=()=>changeHistoryZoom(1);
   $('#btnMenu').onclick=()=>sideMenuOpen(true);$('#btnMenuClose').onclick=()=>sideMenuOpen(false);$('#sideBackdrop').onclick=()=>sideMenuOpen(false);
   $('#btnControl').onclick=()=>loadControlStatus(true);$('#btnControlClose').onclick=()=>$('#controlModal').classList.add('hidden');
   $$('#controlModal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.add('hidden');}));
   $$('[data-close-drawer]').forEach(x=>x.onclick=closeDrawer);
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();sideMenuOpen(false);$('#controlModal')?.classList.add('hidden');document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));document.querySelectorAll('.column-chooser').forEach(d=>d.open=false);}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();sideMenuOpen(false);closeMapModal();$('#controlModal')?.classList.add('hidden');document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));document.querySelectorAll('.column-chooser').forEach(d=>d.open=false);}});
 
-  loadSavedExclusions();ensureOperationalDates();buildAllMultis();loadAllOperativo();loadControlStatus(false);
+  loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
+
 
