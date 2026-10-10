@@ -129,3 +129,1040 @@ main{padding:10px 12px;max-width:none}.sticky-dashboard{position:sticky;top:58px
 .export-capture-preview .status-pill.completed{background:#d8f4e6;color:#00734a}
 .export-capture-preview .status-pill.cancelled{background:#ece7ff;color:#6038a8}
 
+/* =========================================================
+   V22.27 - Desktop 14/15" compacto
+   - Filtros en una sola fila
+   - 14 KPI en una sola fila
+   - Menor altura de cabecera
+   - Tabla ocupa el alto restante de la pantalla
+   - Cabeceras de columnas siempre visibles dentro del scroll
+   ========================================================= */
+@media (min-width:1000px){
+  .topbar{
+    min-height:50px;
+    height:50px;
+    padding:5px 10px;
+  }
+  .brand-mark{width:32px;height:32px;border-radius:8px;font-size:12px}
+  .brand h1{font-size:16px}
+  .top-actions{gap:6px}
+  .top-icon-btn{width:32px;height:32px;border-radius:7px}
+  .top-icon-btn.info svg{width:17px;height:17px}
+  .top-icon-btn.refresh svg{width:18px;height:18px}
+  .last-update{font-size:10px}
+
+  main{padding:5px 8px}
+  .sticky-dashboard{
+    top:50px;
+    padding:3px 0 2px;
+    box-shadow:0 3px 9px rgba(15,23,42,.05);
+  }
+
+  .compact-toolbar{padding:5px 7px}
+  .toolbar-grid{
+    grid-template-columns:
+      minmax(170px,1.50fr)
+      repeat(6,minmax(72px,.72fr))
+      minmax(175px,1.18fr)
+      90px;
+    gap:4px;
+    align-items:end;
+  }
+  .toolbar-grid label,.toolbar-grid .field{
+    min-width:0;
+    gap:2px;
+    font-size:9px;
+    line-height:1.05;
+  }
+  .toolbar-grid input,
+  .toolbar-grid .multi>button,
+  .fixed-window-value{
+    width:100%;
+    min-width:0;
+    height:29px;
+    min-height:29px;
+    border-radius:6px;
+    padding:0 7px;
+    font-size:10px;
+  }
+  .fixed-window-value{
+    display:flex;
+    align-items:center;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .toolbar-inline-actions{
+    gap:3px;
+    padding:0;
+    justify-content:flex-end;
+    flex-wrap:nowrap;
+  }
+  .icon-action{
+    width:28px;
+    height:28px;
+    min-width:28px;
+    border-radius:6px;
+  }
+  .icon-action svg{width:14px;height:14px}
+
+  /* Nunca dividir KPI en dos filas en notebook/desktop. */
+  .kpi-strip{
+    grid-template-columns:repeat(14,minmax(0,1fr));
+    gap:3px;
+    padding:3px 0 1px;
+  }
+  .kpi{
+    min-width:0;
+    min-height:33px;
+    padding:3px 5px;
+    border-radius:6px;
+  }
+  .kpi .l{
+    font-size:7px;
+    line-height:1;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .kpi .v{
+    font-size:14px;
+    line-height:1;
+    margin-top:2px;
+  }
+
+  .map-details{margin-top:4px}
+  .map-details>summary{
+    min-height:27px;
+    padding:5px 9px;
+    font-size:10px;
+  }
+
+  .table-card{margin-top:4px}
+  .table-head{
+    min-height:35px;
+    padding:4px 8px;
+    gap:6px;
+    flex-wrap:nowrap;
+  }
+  .table-head strong{font-size:12px}
+  .table-head .muted{font-size:9px;margin-left:5px}
+  .head-actions{gap:4px;flex-wrap:nowrap;width:auto}
+  .head-actions .btn.small,
+  .column-chooser summary.btn.small{
+    padding:5px 8px;
+    font-size:9px;
+    min-height:27px;
+  }
+  .table-daily-state>summary{
+    min-height:27px;
+    padding:5px 24px 5px 9px;
+    border-radius:8px;
+    font-size:9px;
+  }
+
+  /* El scroll vertical queda dentro de la tabla: el dashboard no tapa el thead. */
+  .table-scroll{
+    height:calc(100vh - 226px);
+    max-height:calc(100vh - 226px);
+    min-height:300px;
+    overflow:auto;
+    overscroll-behavior:contain;
+    scrollbar-gutter:stable;
+  }
+  .table-scroll table{min-width:1600px}
+  #opTable thead{
+    position:sticky;
+    top:0;
+    z-index:90;
+  }
+  #opTable thead::after{
+    content:"";
+    position:absolute;
+    left:0;right:0;bottom:0;
+    height:1px;
+    background:#cbd5e1;
+  }
+  #opTable th{
+    padding:5px 5px;
+    font-size:9px;
+    line-height:1.05;
+  }
+  #opTable .column-filters th{padding:3px}
+  #opTable .column-filters input,
+  #opTable .column-filters .multi>button{
+    height:25px;
+    min-height:25px;
+    font-size:8.5px;
+  }
+  #opTable td{
+    padding:5px 7px;
+    font-size:10px;
+  }
+
+  .table-footer{
+    min-height:34px;
+    padding:4px 8px;
+  }
+  .table-footer .btn.small{padding:5px 8px;font-size:9px}
+  .table-footer #opPageLabel{font-size:10px}
+
+  .side-backdrop{inset:50px 0 0 0}
+  .side-menu{top:50px}
+}
+
+/* En anchos realmente chicos permitimos volver a un layout adaptable. */
+@media (max-width:999px){
+  .table-scroll{max-height:67vh;height:auto}
+}
+
+/* =========================================================
+   V22.28 - Cabecera reducida para notebook 14/15"
+   Reduce exclusivamente altura vertical sin perder filtros/KPI.
+   ========================================================= */
+@media (min-width:1000px){
+  /* Barra superior */
+  .topbar{
+    min-height:42px;
+    height:42px;
+    padding:3px 8px;
+  }
+  .brand{gap:7px}
+  .brand-mark{width:28px;height:28px;border-radius:7px;font-size:11px}
+  .brand h1{font-size:14px;line-height:1}
+  .hamburger{width:30px;height:30px;min-width:30px;border-radius:7px}
+  .hamburger svg{width:16px;height:16px}
+  .top-actions{gap:4px}
+  .top-icon-btn{width:29px;height:29px;border-radius:7px}
+  .top-icon-btn.info svg{width:15px;height:15px}
+  .top-icon-btn.refresh svg{width:16px;height:16px}
+  .last-update{font-size:9px;line-height:1}
+
+  main{padding:3px 7px}
+  .sticky-dashboard{
+    top:42px;
+    padding:2px 0 1px;
+  }
+
+  /* Filtros: una fila, pero bastante más baja */
+  .compact-toolbar{
+    padding:3px 6px 4px;
+    border-radius:10px;
+  }
+  .toolbar-grid{
+    gap:3px;
+  }
+  .toolbar-grid label,.toolbar-grid .field{
+    gap:1px;
+    font-size:8px;
+    line-height:1;
+  }
+  .toolbar-grid input,
+  .toolbar-grid .multi>button,
+  .fixed-window-value{
+    height:25px;
+    min-height:25px;
+    border-radius:5px;
+    padding:0 6px;
+    font-size:9px;
+  }
+  .toolbar-inline-actions{gap:2px}
+  .icon-action{
+    width:25px;
+    height:25px;
+    min-width:25px;
+    border-radius:5px;
+  }
+  .icon-action svg{width:12px;height:12px}
+
+  /* KPI: siempre una línea y menos altos */
+  .kpi-strip{
+    gap:3px;
+    padding:2px 0 1px;
+  }
+  .kpi{
+    min-height:29px;
+    padding:2px 5px;
+    border-radius:5px;
+  }
+  .kpi .l{
+    font-size:6.5px;
+    line-height:.95;
+  }
+  .kpi .v{
+    font-size:13px;
+    line-height:.95;
+    margin-top:1px;
+  }
+
+  /* Si el mapa está colapsado, que prácticamente no consuma alto. */
+  .map-details{margin-top:2px}
+  .map-details>summary{
+    min-height:23px;
+    padding:3px 8px;
+    font-size:9px;
+  }
+
+  /* Cabecera propia de la tabla */
+  .table-card{margin-top:2px}
+  .table-head{
+    min-height:30px;
+    padding:3px 7px;
+    gap:4px;
+  }
+  .table-head strong{font-size:11px;line-height:1}
+  .table-head .muted{font-size:8px;margin-left:4px;line-height:1}
+  .head-actions{gap:3px}
+  .head-actions .btn.small,
+  .column-chooser summary.btn.small{
+    padding:3px 7px;
+    font-size:8px;
+    min-height:23px;
+    border-radius:6px;
+  }
+  .table-daily-state>summary{
+    min-height:23px;
+    padding:3px 21px 3px 8px;
+    border-radius:6px;
+    font-size:8px;
+  }
+
+  /* Más espacio útil para filas. El scroll sigue siendo interno. */
+  .table-scroll{
+    height:calc(100vh - 184px);
+    max-height:calc(100vh - 184px);
+    min-height:320px;
+  }
+
+  /* Cabecera de columnas fija y más compacta */
+  #opTable th{
+    padding:4px 4px;
+    font-size:8.5px;
+    line-height:1;
+  }
+  #opTable .column-filters th{padding:2px 3px}
+  #opTable .column-filters input,
+  #opTable .column-filters .multi>button{
+    height:23px;
+    min-height:23px;
+    font-size:8px;
+    border-radius:5px;
+  }
+  #opTable td{
+    padding:4px 7px;
+    font-size:9.5px;
+  }
+
+  .table-footer{
+    min-height:29px;
+    padding:3px 7px;
+  }
+  .table-footer .btn.small{padding:4px 7px;font-size:8px;min-height:23px}
+  .table-footer #opPageLabel{font-size:9px}
+
+  .side-backdrop{inset:42px 0 0 0}
+  .side-menu{top:42px}
+}
+
+/* =========================================================
+   V22.29 - Fix popup Completados Ayer/Hoy
+   El popup debe quedar por encima del thead sticky y filtros.
+   ========================================================= */
+.table-card{
+  position:relative;
+  overflow:visible;
+}
+.table-head{
+  position:relative;
+  z-index:180;
+  overflow:visible;
+}
+.head-actions{
+  position:relative;
+  z-index:190;
+  overflow:visible;
+}
+.table-daily-state{
+  position:relative;
+  z-index:200;
+  overflow:visible;
+}
+.table-daily-state .daily-state-body{
+  z-index:220;
+}
+/* El encabezado de la tabla continúa sticky, pero debajo del popup. */
+#opTable thead{
+  z-index:90;
+}
+
+
+/* =========================================================
+   V22.30 - Cabecera aún más baja + mapa en popup
+   ========================================================= */
+@media (min-width:1000px){
+  .topbar{
+    min-height:38px;
+    height:38px;
+    padding:2px 7px;
+  }
+  .brand{gap:6px}
+  .brand-mark{width:26px;height:26px;border-radius:6px;font-size:10px}
+  .brand h1{font-size:13px;line-height:1}
+  .hamburger{width:28px;height:28px;min-width:28px;border-radius:6px}
+  .hamburger svg{width:15px;height:15px}
+  .top-icon-btn{width:27px;height:27px;border-radius:6px}
+  .top-icon-btn.info svg{width:14px;height:14px}
+  .top-icon-btn.refresh svg{width:15px;height:15px}
+  .last-update{font-size:8px}
+
+  .sticky-dashboard{top:38px}
+  .side-backdrop{inset:38px 0 0 0}
+  .side-menu{top:38px}
+
+  /* Al quitar la barra colapsable del mapa, la tabla aprovecha ese espacio. */
+  .table-card{margin-top:3px}
+  .table-scroll{
+    height:calc(100vh - 150px);
+    max-height:calc(100vh - 150px);
+  }
+}
+
+/* El mapa ya no ocupa espacio en el dashboard; se abre desde el icono. */
+.map-modal-card{
+  width:min(1180px,96vw);
+  height:min(82vh,760px);
+  max-height:90vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.map-modal-head{flex:0 0 auto}
+.map-modal-head h2{font-size:16px}
+.map-modal-body{
+  flex:1 1 auto;
+  min-height:0;
+  padding:10px;
+}
+.map-modal-body #map{
+  width:100%;
+  height:100%;
+  min-height:420px;
+  border-radius:9px;
+}
+
+/* =========================================================
+   V22.33 - Tabla más compacta, scroll horizontal siempre visible,
+   zoom de densidad y cabecera superior ~30% más baja.
+   ========================================================= */
+@media (min-width:1000px){
+  /* Cabecera superior: ~30% menos que V22.30 (38px -> 27px). */
+  .topbar{
+    min-height:27px;
+    height:27px;
+    padding:1px 6px;
+  }
+  .top-left{gap:5px}
+  .brand{gap:5px}
+  .brand-mark{width:20px;height:20px;border-radius:5px;font-size:8px}
+  .brand h1{font-size:11px;line-height:1}
+  .hamburger,.top-icon-btn{width:21px;height:21px;min-width:21px;border-radius:5px}
+  .hamburger svg{width:12px;height:12px}
+  .top-icon-btn.info svg{width:11px;height:11px}
+  .top-icon-btn.refresh svg{width:12px;height:12px}
+  .last-update,.load-status{font-size:7.5px;line-height:1}
+  .top-actions{gap:3px}
+
+  .sticky-dashboard{top:27px;padding-top:1px}
+  .side-backdrop{inset:27px 0 0 0}
+  .side-menu{top:27px}
+
+  /* Un poco más compactos filtros y KPI para ganar área útil. */
+  .compact-toolbar{padding:2px 5px 3px}
+  .toolbar-grid label,.toolbar-grid .field{font-size:7.5px}
+  .toolbar-grid input,.toolbar-grid .multi>button,.fixed-window-value{
+    height:22px;min-height:22px;font-size:8.5px;padding:0 5px;
+  }
+  .icon-action{width:22px;height:22px;min-width:22px}
+  .kpi{min-height:25px;padding:2px 4px}
+  .kpi .l{font-size:6px}
+  .kpi .v{font-size:11.5px}
+
+  .table-head{min-height:27px;padding:2px 6px}
+  .table-head strong{font-size:10px}
+  .table-head .muted{font-size:7.5px}
+  .table-daily-state>summary,.head-actions .btn.small,.column-chooser summary.btn.small{
+    min-height:21px;padding-top:2px;padding-bottom:2px;font-size:7.5px;
+  }
+  .table-scroll{
+    height:calc(100vh - 125px);
+    max-height:calc(100vh - 125px);
+  }
+}
+
+/* Barra horizontal duplicada y sincronizada, siempre arriba de la tabla. */
+.table-hscroll{
+  width:100%;
+  height:14px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  background:#f5f7fa;
+  border-top:1px solid #dde3ea;
+  border-bottom:1px solid #d9e0e7;
+  scrollbar-gutter:stable;
+  position:relative;
+  z-index:95;
+}
+.table-hscroll-inner{height:1px;min-width:100%}
+.table-hscroll::-webkit-scrollbar{height:11px}
+
+/* Controles de zoom de densidad de la tabla. */
+.table-zoom{display:flex;align-items:center;gap:2px;border:1px solid #d6dee7;border-radius:6px;background:#f8fafc;padding:1px 3px;white-space:nowrap}
+.table-zoom .zoom-btn{min-width:21px!important;width:21px;padding:0!important;font-size:13px!important;line-height:1!important}
+.table-zoom span{min-width:27px;text-align:center;font-size:8px;font-weight:900;color:#526173}
+
+/* Columnas: anchos más ajustados y texto con elipsis. */
+#opTable{width:max-content;min-width:100%;table-layout:fixed}
+#opTable th[data-column],#opTable td[data-column]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#opTable [data-column="task"]{width:112px;max-width:112px}
+#opTable [data-column="created"]{width:132px;max-width:132px}
+#opTable [data-column="affected"]{width:70px;max-width:70px}
+#opTable [data-column="priority"]{width:58px;max-width:58px}
+#opTable [data-column="node"]{width:74px;max-width:74px}
+#opTable [data-column="tipif"]{width:54px;max-width:54px}
+#opTable [data-column="status"]{width:88px;max-width:88px}
+#opTable [data-column="subcapa"]{width:78px;max-width:78px}
+#opTable [data-column="origin"]{width:70px;max-width:70px}
+#opTable [data-column="event"]{width:92px;max-width:92px}
+#opTable [data-column="parentEvent"]{width:92px;max-width:92px}
+#opTable [data-column="ageDays"]{width:78px;max-width:78px}
+#opTable [data-column="eventAgeDays"]{width:88px;max-width:88px}
+#opTable [data-column="contractor"]{width:108px;max-width:108px}
+#opTable [data-column="scheduled"]{width:84px;max-width:84px}
+#opTable [data-column="tipificacion"]{width:155px;max-width:155px}
+#opTable [data-column="capa"]{width:78px;max-width:78px}
+#opTable [data-column="eventSigla"]{width:72px;max-width:72px}
+#opTable [data-column="startTime"],#opTable [data-column="endTime"]{width:108px;max-width:108px}
+#opTable [data-column="tech"]{width:128px;max-width:128px}
+#opTable [data-column="resource"]{width:92px;max-width:92px}
+#opTable [data-column="tree"]{width:80px;max-width:80px}
+
+/* Densidad inicial reducida. El + / - modifica estas clases sin cambiar el zoom del navegador. */
+.table-card.table-density-80 #opTable th{padding:2px 3px;font-size:6.8px}
+.table-card.table-density-80 #opTable td{padding:2px 5px;font-size:7.8px}
+.table-card.table-density-80 #opTable .column-filters th{padding:1px 2px}
+.table-card.table-density-80 #opTable .column-filters input,
+.table-card.table-density-80 #opTable .column-filters .multi>button{height:18px;min-height:18px;font-size:6.8px}
+.table-card.table-density-80 .badge{padding:2px 5px;font-size:7px}
+
+.table-card.table-density-90 #opTable th{padding:3px 3px;font-size:7.4px}
+.table-card.table-density-90 #opTable td{padding:3px 5px;font-size:8.4px}
+.table-card.table-density-90 #opTable .column-filters th{padding:1px 2px}
+.table-card.table-density-90 #opTable .column-filters input,
+.table-card.table-density-90 #opTable .column-filters .multi>button{height:20px;min-height:20px;font-size:7.2px}
+.table-card.table-density-90 .badge{padding:2px 5px;font-size:7.4px}
+
+.table-card.table-density-100 #opTable th{padding:4px 4px;font-size:8.5px}
+.table-card.table-density-100 #opTable td{padding:4px 7px;font-size:9.5px}
+.table-card.table-density-100 #opTable .column-filters th{padding:2px 3px}
+.table-card.table-density-100 #opTable .column-filters input,
+.table-card.table-density-100 #opTable .column-filters .multi>button{height:23px;min-height:23px;font-size:8px}
+.table-card.table-density-100 .badge{padding:4px 7px;font-size:9px}
+
+.table-card.table-density-110 #opTable th{padding:5px 5px;font-size:9.2px}
+.table-card.table-density-110 #opTable td{padding:5px 7px;font-size:10.2px}
+.table-card.table-density-110 #opTable .column-filters th{padding:3px}
+.table-card.table-density-110 #opTable .column-filters input,
+.table-card.table-density-110 #opTable .column-filters .multi>button{height:25px;min-height:25px;font-size:8.6px}
+.table-card.table-density-110 .badge{padding:4px 7px;font-size:9.4px}
+
+
+/* =========================================================
+   V22.34 - Consistencia localhost / file://
+   - Fuerza el layout compacto también cuando Chrome reduce el
+     viewport CSS por zoom del origen localhost.
+   - Mantiene filtros y KPI en una sola línea desde 760px.
+   ========================================================= */
+@media (min-width:760px){
+  .topbar{
+    min-height:27px!important;
+    height:27px!important;
+    padding:1px 6px!important;
+  }
+  .top-left{gap:5px!important}
+  .brand{gap:5px!important}
+  .brand-mark{width:20px!important;height:20px!important;border-radius:5px!important;font-size:8px!important}
+  .brand h1{font-size:11px!important;line-height:1!important}
+  .hamburger,.top-icon-btn{width:21px!important;height:21px!important;min-width:21px!important;border-radius:5px!important}
+  .hamburger svg{width:12px!important;height:12px!important}
+  .top-icon-btn.info svg{width:11px!important;height:11px!important}
+  .top-icon-btn.refresh svg{width:12px!important;height:12px!important}
+  .last-update,.load-status{font-size:7.5px!important;line-height:1!important}
+  .top-actions{gap:3px!important}
+
+  main{padding:3px 7px!important}
+  .sticky-dashboard{top:27px!important;padding:1px 0!important}
+
+  .compact-toolbar{padding:2px 5px 3px!important}
+  .toolbar-grid{
+    display:grid!important;
+    grid-template-columns:
+      minmax(180px,1.55fr)
+      repeat(6,minmax(72px,.72fr))
+      minmax(185px,1.25fr)
+      84px!important;
+    gap:3px!important;
+    align-items:end!important;
+  }
+  .toolbar-grid label,.toolbar-grid .field{
+    min-width:0!important;
+    gap:1px!important;
+    font-size:7.5px!important;
+    line-height:1!important;
+  }
+  .toolbar-grid input,.toolbar-grid .multi>button,.fixed-window-value{
+    width:100%!important;
+    min-width:0!important;
+    height:22px!important;
+    min-height:22px!important;
+    font-size:8.5px!important;
+    padding:0 5px!important;
+  }
+  .fixed-window-value{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+  .toolbar-inline-actions{display:flex!important;gap:2px!important;flex-wrap:nowrap!important;justify-content:flex-end!important}
+  .icon-action{width:22px!important;height:22px!important;min-width:22px!important}
+
+  .kpi-strip{
+    display:grid!important;
+    grid-template-columns:repeat(14,minmax(0,1fr))!important;
+    gap:3px!important;
+    padding:2px 0 1px!important;
+  }
+  .kpi{min-width:0!important;min-height:25px!important;padding:2px 4px!important}
+  .kpi .l{font-size:6px!important;line-height:1!important}
+  .kpi .v{font-size:11.5px!important;line-height:1!important;margin-top:1px!important}
+
+  .table-card{margin-top:3px!important}
+  .table-head{min-height:27px!important;padding:2px 6px!important;gap:3px!important;flex-wrap:nowrap!important}
+  .table-head strong{font-size:10px!important}
+  .table-head .muted{font-size:7.5px!important}
+  .head-actions{gap:3px!important;flex-wrap:nowrap!important;width:auto!important}
+  .table-daily-state>summary,.head-actions .btn.small,.column-chooser summary.btn.small{
+    min-height:21px!important;padding-top:2px!important;padding-bottom:2px!important;font-size:7.5px!important;
+  }
+  .table-scroll{
+    height:calc(100vh - 125px)!important;
+    max-height:calc(100vh - 125px)!important;
+    min-height:260px!important;
+  }
+  .side-backdrop{inset:27px 0 0 0!important}
+  .side-menu{top:27px!important}
+}
+
+/* =========================================================
+   V22.35 - KPI horizontales + histórico compacto + scroll
+   ========================================================= */
+
+/* KPI: valor a la izquierda, nombre a la derecha, más legible. */
+@media (min-width:760px){
+  .kpi-strip{
+    grid-template-columns:repeat(14,minmax(0,1fr))!important;
+    gap:3px!important;
+    padding:2px 0 2px!important;
+  }
+  .kpi{
+    min-height:29px!important;
+    height:29px!important;
+    padding:2px 6px!important;
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:6px!important;
+    overflow:hidden!important;
+  }
+  .kpi .v{
+    order:1!important;
+    flex:0 0 auto!important;
+    margin:0!important;
+    font-size:14px!important;
+    line-height:1!important;
+    font-weight:950!important;
+    white-space:nowrap!important;
+  }
+  .kpi .l{
+    order:2!important;
+    min-width:0!important;
+    flex:1 1 auto!important;
+    font-size:7.7px!important;
+    line-height:1.05!important;
+    font-weight:900!important;
+    text-transform:uppercase!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+}
+
+/* Scroll horizontal superior: deliberadamente visible y separado
+   de la cabecera para poder mover la tabla sin perder los títulos. */
+.table-hscroll{
+  display:block!important;
+  height:17px!important;
+  min-height:17px!important;
+  overflow-x:scroll!important;
+  overflow-y:hidden!important;
+  background:#e9edf2!important;
+  border-top:1px solid #cbd4de!important;
+  border-bottom:1px solid #cbd4de!important;
+  scrollbar-color:#8d949b #e1e5e9;
+  scrollbar-width:auto;
+  z-index:110!important;
+}
+.table-hscroll-inner{height:1px!important;min-width:100%!important}
+.table-hscroll::-webkit-scrollbar{height:12px!important;display:block!important}
+.table-hscroll::-webkit-scrollbar-track{background:#e1e5e9!important;border-radius:8px!important}
+.table-hscroll::-webkit-scrollbar-thumb{background:#8d949b!important;border-radius:8px!important;border:2px solid #e1e5e9!important}
+.table-hscroll::-webkit-scrollbar-thumb:hover{background:#737a81!important}
+
+/* La cabecera arranca inmediatamente debajo del slider y permanece visible
+   durante el desplazamiento vertical interno de la tabla. */
+.table-scroll{position:relative!important}
+#opTable thead{position:sticky!important;top:0!important;z-index:80!important}
+#opTable #taskHeaderRow th{position:sticky!important;top:0!important;z-index:82!important}
+#opTable #taskFilterRow th{position:sticky!important;top:21px!important;z-index:81!important}
+
+/* Histórico / drawer con densidad equivalente a la tabla compacta. */
+@media (min-width:760px){
+  .drawer-panel{width:min(590px,92vw)!important}
+  .drawer-head{padding:7px 10px!important;align-items:center!important}
+  .drawer-head h2{font-size:18px!important;line-height:1!important;margin:1px 0!important}
+  .drawer-head .eyebrow{font-size:7px!important;line-height:1!important}
+  .drawer-head .btn{min-height:24px!important;padding:3px 9px!important;font-size:8px!important}
+  .drawer-body{padding:7px 9px!important}
+  .detail-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important}
+  .detail-item{border-radius:6px!important;padding:5px 7px!important;min-height:42px!important}
+  .detail-item .k{font-size:7px!important;line-height:1.05!important}
+  .detail-item .v{font-size:9.5px!important;line-height:1.15!important;margin-top:2px!important}
+  .history-title{font-size:14px!important;line-height:1!important;margin:10px 0 5px!important}
+  .history-source{font-size:7.5px!important;margin:0 0 4px!important;color:#718097!important}
+  .visit{border-left-width:2px!important;padding:0 0 5px 7px!important}
+  .visit-card{border-radius:6px!important;padding:5px 7px!important}
+  .visit-top{gap:5px!important;font-size:8.5px!important}
+  .visit-top .badge{font-size:7px!important;padding:2px 5px!important}
+  .visit-times,.visit-meta{font-size:8px!important;line-height:1.2!important;margin-top:3px!important}
+  .notes{font-size:8px!important;line-height:1.2!important;padding:5px!important;margin-top:4px!important;border-radius:5px!important}
+}
+
+/* =========================================================
+   V22.36 - KPI legibles + histórico zoom + scroll en footer
+   ========================================================= */
+@media (min-width:760px){
+  /* KPI: número algo menor y etiqueta algo mayor. */
+  .kpi .v{
+    font-size:12.5px!important;
+    line-height:1!important;
+  }
+  .kpi .l{
+    font-size:8.8px!important;
+    line-height:1.05!important;
+    letter-spacing:.01em!important;
+  }
+
+  /* El scroll horizontal vive en el footer, junto a paginación. */
+  .table-footer{
+    display:flex!important;
+    align-items:center!important;
+    gap:10px!important;
+    padding:4px 8px!important;
+    min-height:31px!important;
+  }
+  .table-footer .table-hscroll{
+    flex:1 1 auto!important;
+    width:auto!important;
+    min-width:140px!important;
+    height:16px!important;
+    min-height:16px!important;
+    margin:0!important;
+    border:0!important;
+    background:transparent!important;
+  }
+  .table-footer .pager{
+    flex:0 0 auto!important;
+    margin-left:auto!important;
+  }
+  .table-hscroll::-webkit-scrollbar{height:11px!important}
+
+  /* Histórico: base más legible que V22.35 y controles propios de zoom. */
+  .drawer-panel{width:min(650px,94vw)!important}
+  .drawer-head-actions{display:flex!important;align-items:center!important;gap:7px!important}
+  .history-zoom{display:flex!important;align-items:center!important;gap:3px!important;border:1px solid var(--line)!important;border-radius:7px!important;padding:2px!important;background:#f8fafc!important}
+  .history-zoom .zoom-btn{min-width:27px!important;height:25px!important;padding:2px 7px!important;font-size:12px!important}
+  #historyZoomLabel{min-width:38px!important;text-align:center!important;font-size:9px!important;font-weight:900!important;color:#526173!important}
+
+  .drawer-head{padding:8px 11px!important}
+  .drawer-head h2{font-size:19px!important}
+  .drawer-head .eyebrow{font-size:8px!important}
+  .drawer-head .btn{font-size:9px!important}
+  .drawer-body{padding:8px 10px!important}
+  .detail-item .k{font-size:8px!important}
+  .detail-item .v{font-size:10.5px!important}
+  .history-title{font-size:15px!important}
+  .history-source{font-size:8.5px!important}
+  .visit-top{font-size:9.5px!important}
+  .visit-top .badge{font-size:8px!important}
+  .visit-times,.visit-meta{font-size:9px!important;line-height:1.28!important}
+  .notes{font-size:9px!important;line-height:1.3!important}
+
+  /* Zoom del histórico. 100% es la base anterior. */
+  .drawer-panel.history-zoom-85 .drawer-body{font-size:85%!important}
+  .drawer-panel.history-zoom-85 .detail-item .k{font-size:7px!important}.drawer-panel.history-zoom-85 .detail-item .v{font-size:9px!important}.drawer-panel.history-zoom-85 .history-title{font-size:13px!important}.drawer-panel.history-zoom-85 .history-source{font-size:7.5px!important}.drawer-panel.history-zoom-85 .visit-top{font-size:8px!important}.drawer-panel.history-zoom-85 .visit-top .badge{font-size:7px!important}.drawer-panel.history-zoom-85 .visit-times,.drawer-panel.history-zoom-85 .visit-meta,.drawer-panel.history-zoom-85 .notes{font-size:8px!important}
+  .drawer-panel.history-zoom-115 .detail-item .k{font-size:9px!important}.drawer-panel.history-zoom-115 .detail-item .v{font-size:12px!important}.drawer-panel.history-zoom-115 .history-title{font-size:17px!important}.drawer-panel.history-zoom-115 .history-source{font-size:9.5px!important}.drawer-panel.history-zoom-115 .visit-top{font-size:11px!important}.drawer-panel.history-zoom-115 .visit-top .badge{font-size:9px!important}.drawer-panel.history-zoom-115 .visit-times,.drawer-panel.history-zoom-115 .visit-meta,.drawer-panel.history-zoom-115 .notes{font-size:10.5px!important}
+  .drawer-panel.history-zoom-130 .detail-item .k{font-size:10px!important}.drawer-panel.history-zoom-130 .detail-item .v{font-size:13.5px!important}.drawer-panel.history-zoom-130 .history-title{font-size:19px!important}.drawer-panel.history-zoom-130 .history-source{font-size:10.5px!important}.drawer-panel.history-zoom-130 .visit-top{font-size:12px!important}.drawer-panel.history-zoom-130 .visit-top .badge{font-size:10px!important}.drawer-panel.history-zoom-130 .visit-times,.drawer-panel.history-zoom-130 .visit-meta,.drawer-panel.history-zoom-130 .notes{font-size:12px!important}
+
+  /* Ayer/Hoy: números clickeables para exportación. */
+  .daily-export-btn{appearance:none;border:0;background:transparent;color:inherit;font:inherit;font-weight:950;padding:2px 7px;border-radius:6px;cursor:pointer;min-width:32px}
+  .daily-export-btn:not(:disabled):hover{background:rgba(255,255,255,.62);box-shadow:0 0 0 1px rgba(15,23,42,.12) inset;text-decoration:underline}
+  .daily-export-btn:disabled{cursor:default;opacity:.6}
+}
+
+
+/* =========================================================
+   V22.37 - KPI: título arriba, valor debajo
+   ========================================================= */
+@media (min-width:760px){
+  .kpi{
+    display:flex!important;
+    flex-direction:column!important;
+    justify-content:center!important;
+    align-items:flex-start!important;
+    min-height:35px!important;
+    padding:3px 7px!important;
+  }
+  .kpi .l{
+    order:1!important;
+    width:100%!important;
+    font-size:8.8px!important;
+    line-height:1.02!important;
+    font-weight:900!important;
+    margin:0!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+  .kpi .v{
+    order:2!important;
+    font-size:11.5px!important;
+    line-height:1.02!important;
+    margin-top:2px!important;
+    font-weight:950!important;
+    white-space:nowrap!important;
+  }
+}
+
+/* =========================================================
+   V22.38 - filtros tabla + antigüedad exacta por horas + KPI 24-48
+   ========================================================= */
+@media (min-width:760px){
+  /* 15 KPI en una sola línea. */
+  .kpi-strip{
+    grid-template-columns:repeat(15,minmax(68px,1fr))!important;
+    gap:4px!important;
+  }
+
+  /* Cabecera + filtros: ambos quedan fijos pero siguen ocupando su espacio
+     natural, evitando que la fila de filtros tape la primera tarea. */
+  #opTable thead{
+    position:static!important;
+    z-index:auto!important;
+  }
+  #opTable #taskHeaderRow th{
+    position:sticky!important;
+    top:0!important;
+    z-index:120!important;
+    height:22px!important;
+    min-height:22px!important;
+    padding-top:2px!important;
+    padding-bottom:2px!important;
+  }
+  #opTable #taskFilterRow th{
+    position:sticky!important;
+    top:22px!important;
+    z-index:119!important;
+    height:30px!important;
+    min-height:30px!important;
+    padding:2px!important;
+    overflow:visible!important;
+  }
+  #opTable tbody tr:first-child td{
+    border-top:1px solid #dfe6ee!important;
+  }
+
+  /* Los desplegables de filtros se posicionan por JS como fixed para que
+     no queden recortados por el overflow de la tabla. */
+  #opTable .excel-panel{
+    max-height:min(420px,70vh)!important;
+    overflow:hidden!important;
+    box-shadow:0 14px 36px rgba(15,23,42,.28)!important;
+  }
+  #opTable .excel-panel .multi-list{
+    max-height:min(330px,55vh)!important;
+    overflow:auto!important;
+  }
+}
+
+/* Antigüedad de tarea según horas exactas desde CreadoExacto:
+   <24 blanco | 24-48 verde | 48-72 amarillo | >=72 rosa. */
+.created-white,.age-white{
+  background:#fff!important;
+  color:#17263a!important;
+}
+.created-green,.age-green{
+  background:#c6efce!important;
+  color:#007d51!important;
+}
+.created-yellow,.age-yellow{
+  background:#ffeb9c!important;
+  color:#8a6400!important;
+}
+.created-old,.age-red{
+  background:#ffc7ce!important;
+  color:#9c0006!important;
+}
+
+/* KPI 24-48 usa el mismo verde de antigüedad. */
+.kpi.age-green{background:#c6efce!important}
+
+/* Capturas/preview: soportar también el tramo blanco y 24-48 verde. */
+.export-capture-preview td.created-white,
+.export-capture-preview td.age-white{background:#fff!important;color:#17263a!important;font-weight:700}
+.excel-kpi-grid{grid-template-columns:repeat(8,1fr)!important}
+.excel-kpi-grid.second{grid-template-columns:repeat(7,1fr)!important}
+
+/* =========================================================
+   V22.39 - filtros portal + validación histórica >48h + UI
+   ========================================================= */
+/* Los desplegables de columnas viven en document.body: nunca quedan cortados
+   ni desplazan/tapan la tabla por el sticky/overflow. */
+.excel-filter-portal{
+  position:fixed!important;
+  margin:0!important;
+  width:310px;
+  max-width:calc(100vw - 16px)!important;
+  background:#fff!important;
+  border:1px solid #cbd5e1!important;
+  border-radius:9px!important;
+  box-shadow:0 16px 42px rgba(15,23,42,.28)!important;
+  padding:8px!important;
+  z-index:10000!important;
+  overflow:hidden!important;
+}
+.excel-filter-portal .multi-list{max-height:min(330px,55vh)!important;overflow:auto!important}
+.excel-filter-portal .multi-option{background:#fff}
+.excel-filter-portal .multi-option:hover{background:#f3f6f9}
+
+/* Header actions: misma altura, radio, tipografía y centrado. */
+.head-actions>#btnExportTasks,
+.head-actions>#btnExportExcel,
+.head-actions>.column-chooser>summary{
+  height:30px!important;
+  min-height:30px!important;
+  padding:0 12px!important;
+  border-radius:8px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  line-height:1!important;
+  font-size:9px!important;
+  font-weight:900!important;
+  white-space:nowrap!important;
+}
+.head-actions>.column-chooser>summary{min-width:72px!important}
+.head-actions>#btnExportTasks{min-width:55px!important}
+.head-actions>#btnExportExcel{min-width:118px!important}
+
+/* Descarga completa de ayer/hoy. */
+.daily-state-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.daily-all-btn{height:29px!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#eef4fb!important;color:#27425f!important;font-weight:900!important}
+
+/* Tipificaciones críticas. */
+#opTable td.tipif-alert,.export-capture-preview td.tipif-alert{background:#ffc7ce!important;color:#9c0006!important;font-weight:950!important}
+
+
+/* =========================================================
+   V22.40 - colores Capa/Origen + duplicados Nodo/Padre
+   ========================================================= */
+#opTable td.origin-cell.externo,
+.export-capture-preview td.origin-cell.externo{
+  background:#ffc2ca!important;
+  color:#9c0006!important;
+}
+#opTable td.origin-cell.cliente,
+.export-capture-preview td.origin-cell.cliente{
+  background:#fff!important;
+  color:#17263a!important;
+}
+#opTable td.duplicate-green,
+.export-capture-preview td.duplicate-green{
+  background:#c6efce!important;
+  color:#007d51!important;
+  font-weight:900!important;
+}
+/* Colores de capa según referencia */
+#opTable td.capa-cell.edificio,.export-capture-preview td.capa-cell.edificio{background:#d9eafa!important}
+#opTable td.capa-cell.infra,.export-capture-preview td.capa-cell.infra{background:#ffc2ca!important}
+#opTable td.capa-cell.fibra,.export-capture-preview td.capa-cell.fibra{background:#ffe69a!important}
+#opTable td.capa-cell.usac,.export-capture-preview td.capa-cell.usac{background:#d8efd0!important}
+
+/* V22.43 — filtros de tabla uniformes y siempre hacia abajo */
+.excel-filter-portal{
+  font-size:11px!important;
+  line-height:1.25!important;
+  overflow:hidden!important;
+}
+.excel-filter-portal .multi-tools{
+  grid-template-columns:minmax(0,1fr) auto auto!important;
+  align-items:center!important;
+}
+.excel-filter-portal .multi-tools input{
+  height:34px!important;
+  min-height:34px!important;
+  font-size:11px!important;
+  line-height:1.2!important;
+  padding:0 9px!important;
+}
+.excel-filter-portal .multi-tools button{
+  height:34px!important;
+  min-height:34px!important;
+  font-size:11px!important;
+  line-height:1!important;
+  padding:0 10px!important;
+}
+.excel-filter-portal .multi-tools .multi-close{
+  width:34px!important;
+  min-width:34px!important;
+  height:34px!important;
+  font-size:17px!important;
+  padding:0!important;
+}
+.excel-filter-portal .multi-list{
+  max-height:min(330px,calc(100vh - 150px))!important;
+  overflow:auto!important;
+}
+.excel-filter-portal .multi-option{
+  min-height:34px!important;
+  padding:5px 7px!important;
+  font-size:11px!important;
+  line-height:1.25!important;
+  grid-template-columns:24px minmax(0,1fr)!important;
+}
+.excel-filter-portal .multi-option input{
+  width:16px!important;
+  height:16px!important;
+}
+.excel-filter-portal .multi-option span{
+  font-size:11px!important;
+  line-height:1.25!important;
+}
+.excel-filter-portal .multi-empty{
+  font-size:11px!important;
+}
