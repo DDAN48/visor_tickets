@@ -13,21 +13,65 @@
   const STORAGE_KEY='ofsc_exclusions_v22_4';
   // Orden de columnas: primero las visibles por defecto; el resto queda disponible en "Columnas".
   const COLUMN_DEFS = [
-    ['task','Tarea'],['created','Creado'],['affected','Afectación'],['priority','Prioridad'],['node','Nodo'],['tipif','Tipif'],['status','Estado'],
+    ['task','Tarea'],['created','Creado'],['affected','Afectación'],['mira_total','Total CM'],['mira_up','CM Up %'],['priority','Prioridad'],['node','Nodo'],['tipif','Tipif'],['status','Estado'],
     ['subcapa','Subcapa'],['origin','Origen'],['event','Evento'],['parentEvent','Padre'],['ageDays','Antigüedad'],['eventAgeDays','Antigüedad Evento'],['contractor','Contratista'],['scheduled','Agendado'],
     ['tipificacion','Tipificación tarea'],['capa','Capa'],['eventSigla','Sigla Evento'],['startTime','Start Time'],['endTime','End Time'],['tech','Técnico / móvil'],['resource','ID Recurso'],['tree','Árbol']
   ];
-  const INITIAL_VISIBLE_COLUMNS = new Set(['task','created','affected','priority','node','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled']);
+  const MIRA_FIELDS = [
+    ['mira_total','Total CM','cmStatus.cmTot'],
+    ['mira_up','CM Up %','cmStatus.cmUpPercent'],
+    ['mira_tecnologia','Tecnología MIRA','equipo.equipoTipo.nombre'],
+    ['mira_hub','Hub MIRA','hub'],
+    ['mira_ofdma','OFDMA %','cmPartialService.ofdmaPercent'],
+    ['mira_qam','SC-QAM %','cmPartialService.qamPercent'],
+    ['mira_loss','Packet Loss','cmIcmp.ploss'],
+    ['mira_lossPct','CM Packet Loss %','cmIcmp.porcCmPloss'],
+    ['mira_inMbps','Tráfico entrada Mbps','cmTrafico.inMbps'],
+    ['mira_outMbps','Tráfico salida Mbps','cmTrafico.outMbps'],
+    ['mira_pDs','Potencia DS','cmPwr.pwrDs'],
+    ['mira_pUs','Potencia US','cmPwr.pwrUs'],
+    ['mira_pRx','Potencia US Rx','cmPwr.pwrUsRx'],
+    ['mira_sDs','SNR DS','cmSnr.snrDs'],
+    ['mira_sUs','SNR US','cmSnr.snrUs'],
+    ['mira_fdPre','FEC DS Pre','cmFecDs.dsFecPre'],
+    ['mira_fdPrePct','FEC DS Pre %','cmFecDs.porcCmFecPre'],
+    ['mira_fdPost','FEC DS Post','cmFecDs.dsFecPost'],
+    ['mira_fdPostPct','FEC DS Post %','cmFecDs.porcCmFecPost'],
+    ['mira_fuPre','FEC US Pre','cmFecUs.usFecPre'],
+    ['mira_fuPrePct','FEC US Pre %','cmFecUs.porcCmFecPre'],
+    ['mira_fuPost','FEC US Post','cmFecUs.usFecPost'],
+    ['mira_fuPostPct','FEC US Post %','cmFecUs.porcCmFecPost'],
+    ['mira_fdoPre','FEC DS OFDM Pre','cmFecDsOfdm.dsFecPre'],
+    ['mira_fdoPrePct','FEC DS OFDM Pre %','cmFecDsOfdm.porcCmFecPre'],
+    ['mira_fdoPost','FEC DS OFDM Post','cmFecDsOfdm.dsFecPost'],
+    ['mira_fdoPostPct','FEC DS OFDM Post %','cmFecDsOfdm.porcCmFecPost'],
+    ['mira_fuoPre','FEC US OFDM Pre','cmFecUsOfdm.usFecPre'],
+    ['mira_fuoPrePct','FEC US OFDM Pre %','cmFecUsOfdm.porcCmFecPre'],
+    ['mira_fuoPost','FEC US OFDM Post','cmFecUsOfdm.usFecPost'],
+    ['mira_fuoPostPct','FEC US OFDM Post %','cmFecUsOfdm.porcCmFecPost'],
+    ['mira_nDs','Frecuencias DS','cmFrecuencias.nDs'],
+    ['mira_nUs','Frecuencias US','cmFrecuencias.nUs'],
+    ['mira_d20','DOCSIS 2.0','cmCant.cantD20'],
+    ['mira_d30','DOCSIS 3.0','cmCant.cantD30'],
+    ['mira_d31','DOCSIS 3.1','cmCant.cantD31'],
+    ['mira_pnm','PNM PH','cmPnm.eqPh']
+  ];
+  COLUMN_DEFS.push(...MIRA_FIELDS.filter(([k])=>!COLUMN_DEFS.some(([existing])=>existing===k)).map(([k,label])=>[k,label]));
+  const INITIAL_VISIBLE_COLUMNS = new Set(['task','created','affected','priority','node','mira_up','mira_total','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled']);
   const ESSENTIAL_COLUMNS = INITIAL_VISIBLE_COLUMNS;
   const TOP_TO_COLUMN = {Estado:'status',Contratista:'contractor',Arbol:'tree',Capa:'capa',SubCapa:'subcapa',Tipif:'tipif',Afectacion:'affected'};
   const COLUMN_TO_TOP = Object.fromEntries(Object.entries(TOP_TO_COLUMN).map(([k,v])=>[v,k]));
 
+  const PREF_KEY='ofsc_preferences_v2254';
+  const savedPrefs=(()=>{try{return JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{}}catch{return {}}})();
+  const savePreferences=()=>{try{localStorage.setItem(PREF_KEY,JSON.stringify({visibleColumns:COLUMN_DEFS.map(([k])=>k).filter(k=>!state.hiddenColumns.has(k)),tableZoom:state.tableZoom,historyZoom:state.historyZoom}));}catch(e){console.warn('No se pudo guardar preferencias',e)}};
+  const mira = {summary:new Map(),full:new Map(), last:null, inFlight:false, timer:null, selected: new Set()};
   const state = {
     tab:C.DEFAULT_TAB||'operativo', subtab:'tasks', raw:[], analyticsRaw:[], current:[], filtered:[], page:1,
     meta:{apiTotal:0,uniqueTotal:0}, filterValues:{}, topFilters:{}, colFilters:{}, textFilters:{},
-    defaultLiveStatuses:new Set(), map:null, markers:null, histData:[], loading:false, hiddenColumns:new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>!INITIAL_VISIBLE_COLUMNS.has(k))),
-    exclusions:cloneDefaults(), sort:{key:'created',direction:1}, columnSelections:{}, columnValueCache:{}, kpiValues:[],
-    loadedRange:{from:'',to:''}, analyticsRange:{from:'',to:''}, taskHistoryCache:new Map(), backgroundLoading:false, tableZoom:90, historyZoom:100
+    defaultLiveStatuses:new Set(), map:null, markers:null, histData:[], loading:false, hiddenColumns:new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>Array.isArray(savedPrefs.visibleColumns)?!savedPrefs.visibleColumns.includes(k):!INITIAL_VISIBLE_COLUMNS.has(k))),
+    exclusions:cloneDefaults(), sort:{key:'created',direction:1}, columnSelections:{}, columnColorSelections:{}, columnValueCache:{}, kpiValues:[],
+    loadedRange:{from:'',to:''}, analyticsRange:{from:'',to:''}, taskHistoryCache:new Map(), backgroundLoading:false, tableZoom:[80,90,100,110,120,130,140,150,160].includes(Number(savedPrefs.tableZoom))?Number(savedPrefs.tableZoom):90, historyZoom:[85,100,115,130].includes(Number(savedPrefs.historyZoom))?Number(savedPrefs.historyZoom):100
   };
 
   const norm=v=>String(v??'').trim();
@@ -50,7 +94,8 @@
   const eventAgeClass=d=>Number(d)>=3?'age-red':Number(d)>=2?'age-yellow':'age-green';
   const taskAgeClass=r=>{const h=createdAgeHours(r);if(h===null)return'';if(h<24)return'age-white';if(h<48)return'age-green';if(h<72)return'age-yellow';return'age-red';};
   const capaClass=v=>{const x=norm(v).toLowerCase();if(x.includes('edificio'))return'edificio';if(x.includes('infra'))return'infra';if(x.includes('fibra'))return'fibra';if(x.includes('usac'))return'usac';if(x.includes('ingress'))return'ingress';if(x.includes('leak'))return'leak';return''};
-  const originClass=v=>{const x=norm(v).toLowerCase();if(x.includes('extern'))return'externo';if(x.includes('client'))return'cliente';return''};
+  const subcapaClass=v=>capaClass(v);
+  const originClass=v=>{const x=norm(v).toLowerCase();if(x.includes('prevent'))return'preventivo';if(x.includes('extern'))return'externo';if(x.includes('client'))return'cliente';return''};
   const taskId=r=>norm(r.Tarea||r.apptNumber||r.activityId);
   const siglaTarea=r=>norm(r.Tipif||r.SiglaTarea||(taskId(r).match(/^\d{6}([A-Z]{3})/)||[])[1]);
   const oracleEvent=r=>norm(r.TicketEvento||r.XA_Eventticket||r.ticket_evento);
@@ -66,7 +111,11 @@
   const totalAssignments=r=>serialCount(r.TotalAsignaciones??r.total_asignaciones);
   const affected=r=>norm(r.Afectacion||r.afectacion);
   const priority=r=>norm(r.XA_Priority||r.Priority||r.Prioridad||r.priority);
-  const origin=r=>norm(r.Origen||r.origen);
+  const origin=r=>{
+    const p=upper(parentEvent(r));
+    if(/^\d{6}MP/.test(p)||/^MP(?:\b|[-_])/.test(p))return 'PREVENTIVO';
+    return norm(r.Origen||r.origen);
+  };
   const tree=r=>norm(r.Arbol||r.arbol);
   const contractor=r=>{
     const raw=norm(r.Contratista||r.contratista);
@@ -688,8 +737,66 @@
   function closeTableFilterPanels(){document.querySelectorAll('.excel-panel').forEach(p=>p.classList.add('hidden'));}
 
 
+  const COLOR_META={
+    white:{label:'Blanco',hex:'#ffffff'},
+    green:{label:'Verde',hex:'#c6efce'},
+    yellow:{label:'Amarillo',hex:'#ffeb9c'},
+    red:{label:'Rojo',hex:'#ffc7ce'},
+    salmon:{label:'Rojo',hex:'#f4c7ab'},
+    pink:{label:'Rojo',hex:'#ffc2ca'},
+    blue:{label:'Celeste',hex:'#d9eafa'},
+    lightblue:{label:'Azul',hex:'#dce9ff'},
+    cyan:{label:'Celeste claro',hex:'#d8eef7'},
+    purple:{label:'Violeta',hex:'#eadcff'},
+    violet:{label:'Lila',hex:'#ece7ff'}
+  };
+  const COLOR_FILTERABLE_KEYS=new Set(['created','affected','node','tipif','status','subcapa','origin','parentEvent','ageDays','eventAgeDays','capa']);
+
+  function classToColorKey(cls){
+    return ({edificio:'blue',fibra:'yellow',infra:'pink',usac:'green',ingress:'purple',leak:'purple'})[cls]||'white';
+  }
+  function columnColorKey(r,key,dups=null){
+    if(key==='created'){
+      const c=createdClass(r);return c==='created-green'?'green':c==='created-yellow'?'yellow':c==='created-old'?'salmon':'white';
+    }
+    if(key==='ageDays'){
+      const c=taskAgeClass(r);return c==='age-green'?'green':c==='age-yellow'?'yellow':c==='age-red'?'red':'white';
+    }
+    if(key==='eventAgeDays'){
+      const c=eventAgeClass(eventAgeDays(r));return c==='age-green'?'green':c==='age-yellow'?'yellow':'red';
+    }
+    if(key==='capa')return classToColorKey(capaClass(capa(r)));
+    if(key==='subcapa')return classToColorKey(subcapaClass(subcapa(r)));
+    if(key==='origin'){
+      const c=originClass(origin(r));return c==='preventivo'?'green':c==='externo'?'pink':'white';
+    }
+    if(key==='tipif')return ['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'red':'white';
+    if(key==='affected')return /^SI$/i.test(affected(r))?'yellow':'green';
+    if(key==='status'){
+      return ({started:'yellow',suspended:'red',assigned:'lightblue',enroute:'cyan',scheduled:'purple',completed:'green',cancelled:'violet'})[statusKey(r.Estado||r.status)]||'white';
+    }
+    if(key==='node')return dups?.nodes?.has(upper(node(r)))?'green':'white';
+    if(key==='parentEvent')return dups?.parents?.has(upper(parentEvent(r)))?'green':'white';
+    return 'white';
+  }
+  function colorOptionsForColumn(key,rows){
+    if(!COLOR_FILTERABLE_KEYS.has(key))return[];
+    const dups=duplicateSets(rows);
+    const used=new Set(rows.map(r=>columnColorKey(r,key,dups)));
+    // Los tonos rosa, rojizo y rojo se filtran como una sola categoría Rojo.
+    const normalized=new Set([...used].map(k=>['red','salmon','pink'].includes(k)?'red':k));
+    return [...normalized].filter(k=>COLOR_META[k]).map(k=>({key:k,...COLOR_META[k]}));
+  }
+  function valueColorKey(key,value,rows){
+    if(!COLOR_FILTERABLE_KEYS.has(key))return '';
+    const dups=duplicateSets(rows);
+    const target=String(value??'').trim();
+    const r=rows.find(x=>String(rowValueByColumn(x,key)??'').trim()===target);
+    return r?columnColorKey(r,key,dups):'';
+  }
+
   function rowSearchText(r){return [taskId(r),node(r),tech(r),parentEvent(r),eventCode(r),contractor(r),capa(r),subcapa(r),siglaTarea(r),r.AddressLine1,r.address].map(norm).join(' ').toLowerCase();}
-  function rowValueByColumn(r,key){switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);default:return'';}}
+  function rowValueByColumn(r,key){if(key.startsWith('mira_'))return miraValue(r,key);switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);default:return'';}}
   function buildColumnValueCache(){
     const rows=availableRows();state.columnValueCache={};
     for(const [key] of COLUMN_DEFS){
@@ -703,43 +810,69 @@
     const btn=document.createElement('button');btn.type='button';btn.className='excel-filter-btn';
     const panel=document.createElement('div');panel.className='multi-panel hidden excel-panel excel-filter-portal';
     const bag=state.columnSelections[key] instanceof Set?state.columnSelections[key]:(state.columnSelections[key]=new Set());
-    panel.innerHTML='<div class="multi-tools"><input type="search" placeholder="Buscar valores…"><button type="button" data-a="toggle">Todos</button><button type="button" class="multi-close" data-a="close" aria-label="Cerrar filtro">×</button></div><div class="multi-list"></div>';
-    const search=panel.querySelector('input'),list=panel.querySelector('.multi-list');
+    panel.innerHTML='<div class="multi-tools"><input type="search" placeholder="Buscar valores…"><button type="button" data-a="toggle">Todos</button><button type="button" class="multi-close" data-a="close" aria-label="Cerrar filtro">×</button></div><div class="color-filter-box hidden"></div><div class="multi-list"></div>';
+    const search=panel.querySelector('input'),list=panel.querySelector('.multi-list'),colorBox=panel.querySelector('.color-filter-box');
     wrap.append(btn);host.append(wrap);document.body.append(panel);
     const close=()=>panel.classList.add('hidden');
     const place=()=>{
-      const r=btn.getBoundingClientRect(),w=Math.min(310,window.innerWidth-16);
-      panel.style.position='fixed';
-      panel.style.width=w+'px';
+      const r=btn.getBoundingClientRect(),w=Math.min(330,window.innerWidth-16);
+      panel.style.position='fixed';panel.style.width=w+'px';
       panel.style.left=Math.max(8,Math.min(r.left,window.innerWidth-w-8))+'px';
-      panel.style.zIndex='10000';
-      /* Todos los filtros de tabla se despliegan siempre hacia abajo. */
-      panel.style.top=(r.bottom+4)+'px';
-      panel.style.bottom='auto';
-      /* Si queda poco alto visible, limitamos la lista; nunca invertimos el popup. */
-      const available=Math.max(150,window.innerHeight-r.bottom-16);
-      panel.style.maxHeight=available+'px';
+      panel.style.zIndex='10000';panel.style.top=(r.bottom+4)+'px';panel.style.bottom='auto';
+      panel.style.maxHeight=Math.max(150,window.innerHeight-r.bottom-16)+'px';
+    };
+    const renderColors=()=>{
+      const rows=availableRows(),options=colorOptionsForColumn(key,rows),selected=state.columnColorSelections[key]||'';
+      if(!options.length){colorBox.classList.add('hidden');colorBox.innerHTML='';return;}
+      colorBox.classList.remove('hidden');
+      colorBox.innerHTML='<div class="color-filter-title">Filtrar por color</div><div class="color-filter-options">'+
+        `<button type="button" class="color-filter-chip ${!selected?'active':''}" data-color=""><span class="color-swatch clear-swatch">×</span>Todos</button>`+
+        options.map(o=>`<button type="button" class="color-filter-chip ${selected===o.key?'active':''}" data-color="${esc(o.key)}"><span class="color-swatch" style="background:${o.hex}"></span>${esc(o.label)}</button>`).join('')+
+        '</div>';
+      colorBox.querySelectorAll('[data-color]').forEach(b=>b.onclick=e=>{
+        e.stopPropagation();const color=b.dataset.color||'';
+        if(color)state.columnColorSelections[key]=color;else delete state.columnColorSelections[key];
+        state.page=1;renderColors();applyFilters();
+      });
     };
     const render=()=>{
       btn.textContent=`${columnFilterLabel(key)} ▾`;
-      const q=norm(search.value).toLowerCase();let vals=(state.columnValueCache[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));const total=vals.length;vals=vals.slice(0,350);
-      list.innerHTML=vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}><span>${esc(v)}</span></label>`).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';
-      const toggleBtn=panel.querySelector('[data-a="toggle"]'),allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';
-      list.querySelectorAll('input').forEach(i=>i.onchange=()=>{i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();});
+      const q=norm(search.value).toLowerCase();let vals=(state.columnValueCache[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));
+      const total=vals.length;vals=vals.slice(0,350);const rows=availableRows();
+      list.innerHTML=vals.map(v=>{
+        const ck=valueColorKey(key,v,rows),meta=COLOR_META[ck];
+        const sw=meta?`<span class="filter-value-swatch" style="background:${meta.hex}" title="${esc(meta.label)}"></span>`:'';
+        return `<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}>${sw}<span>${esc(v)}</span></label>`;
+      }).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';
+      const toggleBtn=panel.querySelector('[data-a="toggle"]'),allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));
+      if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';
+      list.querySelectorAll('input').forEach(i=>i.onchange=()=>{
+        i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();
+      });
+      renderColors();
     };
-    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});const willOpen=panel.classList.contains('hidden');if(!willOpen){close();return;}render();panel.classList.remove('hidden');place();search.focus();};
-    panel.onclick=e=>e.stopPropagation();
-    search.oninput=render;
-    panel.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){close();return;}const allVals=state.columnValueCache[key]||[];const allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(allSelected)bag.clear();else allVals.forEach(v=>bag.add(v));syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();});
+    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});const open=panel.classList.contains('hidden');if(!open){close();return;}render();panel.classList.remove('hidden');place();search.focus();};
+    panel.onclick=e=>e.stopPropagation();search.oninput=render;
+    panel.querySelector('[data-a="close"]').onclick=e=>{e.stopPropagation();close();};
+    panel.querySelector('[data-a="toggle"]').onclick=e=>{e.stopPropagation();const allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(allSelected)bag.clear();else allVals.forEach(v=>bag.add(v));syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();};
     host._refresh=render;render();
   }
   function applyFilters(){
     const q=norm($('#opSearch').value).toLowerCase();let rows=availableRows();
     rows=rows.filter(r=>{if(q&&!rowSearchText(r).includes(q))return false;for(const key of ['Estado','Contratista','Arbol','Capa','SubCapa','Tipif']){const bag=state.topFilters[key];if(bag?.size&&!bag.has(getValue(r,key)))return false;}for(const key of ['Estado','Contratista','Afectacion','Capa','SubCapa','Tipif','Arbol']){const bag=state.colFilters[key];if(bag?.size&&!bag.has(getValue(r,key)))return false;}for(const [k,bag] of Object.entries(state.columnSelections)){if(bag?.size&&!bag.has(String(rowValueByColumn(r,k)??'').trim()))return false;}for(const [k,v] of Object.entries(state.textFilters)){if(v&&!String(rowValueByColumn(r,k)).toLowerCase().includes(v.toLowerCase()))return false;}return true;});
+    const dups=duplicateSets(rows);
+    for(const [k,color] of Object.entries(state.columnColorSelections||{})){
+      if(!color)continue;
+      const requested=['red','salmon','pink'].includes(color)?'red':color;
+      rows=rows.filter(r=>{
+        const actual=columnColorKey(r,k,dups);
+        return (['red','salmon','pink'].includes(actual)?'red':actual)===requested;
+      });
+    }
     if(state.sort.key){const {key,direction}=state.sort;const sortVal=r=>key==='created'?(parseDate(createdValue(r))?.getTime()||0):key==='scheduled'?(parseDate(scheduled(r))?.getTime()||0):rowValueByColumn(r,key);rows.sort((a,b)=>compare(sortVal(a),sortVal(b))*direction);}state.filtered=rows;state.page=1;renderAll();
   }
   function compare(a,b){const na=Number(a),nb=Number(b);if(Number.isFinite(na)&&Number.isFinite(nb))return na-nb;return String(a??'').localeCompare(String(b??''),'es',{numeric:true,sensitivity:'base'});}
-  function resetFilters(){$('#opSearch').value='';state.textFilters={};$$('[data-text-col]').forEach(i=>i.value='');for(const k of ['Contratista','Arbol','Capa','SubCapa','Tipif'])state.topFilters[k]=new Set();state.topFilters.Estado=new Set(state.defaultLiveStatuses);state.colFilters={};state.columnSelections={status:new Set(state.defaultLiveStatuses)};buildAllMultis();buildColumns();applyFilters();}
+  function resetFilters(){$('#opSearch').value='';state.textFilters={};$$('[data-text-col]').forEach(i=>i.value='');for(const k of ['Contratista','Arbol','Capa','SubCapa','Tipif'])state.topFilters[k]=new Set();state.topFilters.Estado=new Set(state.defaultLiveStatuses);state.colFilters={};state.columnSelections={status:new Set(state.defaultLiveStatuses)};state.columnColorSelections={};buildAllMultis();buildColumns();applyFilters();}
 
   function movementDate(r){
     for(const v of [endValue(r),startValue(r),r.FechaEfectiva,r.fecha_intervencion,r.FechaIntervencion,r.Agendado,r.date]){
@@ -794,22 +927,29 @@
   function renderKpis(){state.kpiValues=computeKpis();$('#kpiStrip').innerHTML=state.kpiValues.map(([l,v,c])=>`<article class="kpi ${c}"><div class="l" title="${esc(l)}">${esc(l)}</div><div class="v">${esc(v)}</div></article>`).join('');}
 
 
-  function buildColumns(){document.querySelectorAll('.excel-filter-portal').forEach(p=>p.remove());const hr=$('#taskHeaderRow'),fr=$('#taskFilterRow');hr.innerHTML='';fr.innerHTML='';buildColumnValueCache();for(const [key,label] of COLUMN_DEFS){const th=document.createElement('th');th.dataset.column=key;th.textContent=label;th.title='Click para ordenar';th.style.cursor='pointer';th.onclick=()=>{if(state.sort.key===key)state.sort.direction*=-1;else state.sort={key,direction:1};applyFilters();};hr.append(th);const fh=document.createElement('th');fh.dataset.column=key;const host=document.createElement('div');host.className='multi-host';fh.append(host);fr.append(fh);makeExcelColumnFilter(host,key);}buildColumnChooser();applyColumnVisibility();}
+  function buildColumns(){document.querySelectorAll('.excel-filter-portal').forEach(p=>p.remove());const hr=$('#taskHeaderRow'),fr=$('#taskFilterRow');hr.innerHTML='';fr.innerHTML='';buildColumnValueCache();for(const [key,label] of COLUMN_DEFS){const th=document.createElement('th');th.dataset.column=key;th.textContent=label;th.title='Click para ordenar';th.style.cursor='pointer';th.onclick=()=>{if(window.__ofsResizeGuard)return;if(state.sort.key===key)state.sort.direction*=-1;else state.sort={key,direction:1};applyFilters();};hr.append(th);const fh=document.createElement('th');fh.dataset.column=key;const host=document.createElement('div');host.className='multi-host';fh.append(host);fr.append(fh);makeExcelColumnFilter(host,key);}buildColumnChooser();applyColumnVisibility();installColumnResizers();}
 
-  function buildColumnChooser(){const p=$('#columnChooserPanel');p.innerHTML=`<div class="column-chooser-actions"><button id="colsAll" class="btn ghost small">Todas</button><button id="colsEss" class="btn ghost small">Esenciales</button><button id="colsClose" class="btn ghost small chooser-close">Cerrar ×</button></div>${COLUMN_DEFS.map(([k,l])=>`<label><input class="col-check" type="checkbox" value="${k}" ${state.hiddenColumns.has(k)?'':'checked'}><span>${esc(l)}</span></label>`).join('')}`;p.querySelectorAll('.col-check').forEach(i=>i.onchange=()=>{i.checked?state.hiddenColumns.delete(i.value):state.hiddenColumns.add(i.value);applyColumnVisibility();});$('#colsAll').onclick=e=>{e.preventDefault();state.hiddenColumns.clear();buildColumnChooser();applyColumnVisibility();};$('#colsEss').onclick=e=>{e.preventDefault();state.hiddenColumns=new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>!ESSENTIAL_COLUMNS.has(k)));buildColumnChooser();applyColumnVisibility();};$('#colsClose').onclick=e=>{e.preventDefault();$('#columnChooser').open=false;};}
+  function buildColumnChooser(){const p=$('#columnChooserPanel');p.innerHTML=`<div class="column-chooser-actions"><button id="colsAll" class="btn ghost small">Todas</button><button id="colsEss" class="btn ghost small">Esenciales</button><button id="colsClose" class="btn ghost small chooser-close">Cerrar ×</button></div>${COLUMN_DEFS.map(([k,l])=>`<label><input class="col-check" type="checkbox" value="${k}" ${state.hiddenColumns.has(k)?'':'checked'}><span>${esc(l)}</span></label>`).join('')}`;p.querySelectorAll('.col-check').forEach(i=>i.onchange=()=>{i.checked?state.hiddenColumns.delete(i.value):state.hiddenColumns.add(i.value);applyColumnVisibility();savePreferences();});$('#colsAll').onclick=e=>{e.preventDefault();state.hiddenColumns.clear();buildColumnChooser();applyColumnVisibility();savePreferences();};$('#colsEss').onclick=e=>{e.preventDefault();state.hiddenColumns=new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>!ESSENTIAL_COLUMNS.has(k)));buildColumnChooser();applyColumnVisibility();savePreferences();};$('#colsClose').onclick=e=>{e.preventDefault();$('#columnChooser').open=false;};}
   function applyColumnVisibility(){for(const [k] of COLUMN_DEFS)document.querySelectorAll(`[data-column="${k}"]`).forEach(el=>el.classList.toggle('col-hidden',state.hiddenColumns.has(k)));}
 
   function createdAgeHours(r){const d=parseDate(createdValue(r));return d?Math.max(0,(Date.now()-d.getTime())/3600000):null;}
-  function createdClass(r){const h=createdAgeHours(r);if(h===null)return'';if(h<24)return'created-white';if(h<48)return'created-green';if(h<72)return'created-yellow';return'created-old';}
+  function createdClass(r){const d=parseDate(createdValue(r));if(!d)return'';const now=new Date();const today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());const day=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());const age=Math.max(0,Math.floor((today-day)/86400000));return age===0?'created-white':age===1?'created-green':age===2?'created-yellow':'created-old';}
 
   function duplicateSets(rows){
     const countBy=(getter)=>{const m=new Map();for(const r of rows){const v=upper(getter(r));if(!v||v==='—')continue;m.set(v,(m.get(v)||0)+1);}return new Set([...m].filter(([,n])=>n>1).map(([v])=>v));};
     return {nodes:countBy(node),parents:countBy(parentEvent)};
   }
 
-  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=duplicateSets(state.filtered);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:k==='eventAgeDays'?`age-cell ${eventAgeClass(eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=()=>openTaskDrawer(tr.dataset.task));requestAnimationFrame(updateTableHorizontalScroller);}
+  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=duplicateSets(state.filtered);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:k==='eventAgeDays'?`age-cell ${eventAgeClass(eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='subcapa'?`subcapa-cell ${subcapaClass(subcapa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=e=>{const btn=e.target.closest('[data-mira-node]');if(btn){showMiraPopup(btn.dataset.miraNode);return;}openTaskDrawer(tr.dataset.task)});requestAnimationFrame(updateTableHorizontalScroller);scheduleMiraScan();}
 
-  function cellHtml(r,k){if(k==='task')return`<span class="task-link">${esc(taskId(r))}</span>`;if(k==='status')return badgeStatus(r.Estado||r.status);if(k==='affected')return affected(r)?`<span class="badge ${/^SI$/i.test(affected(r))?'warn':'ok'}">${esc(affected(r))}</span>`:'—';return esc(fmt(rowValueByColumn(r,k)));}
+  function cellHtml(r,k){if(k.startsWith('mira_')){
+    const val=miraValue(r,k);
+    // Umbral estricto: 79,99% es rojo/rosa; 80% exacto no se resalta.
+    // Conservar el valor original para evaluar el umbral sin depender de formato local.
+    const raw=k==='mira_up'?String(val).replace(/\./g,'').replace(',','.'):'';
+    const lowUp=k==='mira_up'&&val!==''&&Number.isFinite(Number(raw))&&Number(raw)<80;
+    return `<button type="button" class="mira-click${lowUp?' mira-up-low':''}" data-mira-node="${esc(node(r))}" title="Ver estadísticas MIRA5 · activar VPN">${esc(val===''?'—':val)}</button>`;
+  }if(k==='task')return`<span class="task-link">${esc(taskId(r))}</span>`;if(k==='status')return badgeStatus(r.Estado||r.status);if(k==='affected')return affected(r)?`<span class="badge ${/^SI$/i.test(affected(r))?'warn':'ok'}">${esc(affected(r))}</span>`:'—';return esc(fmt(rowValueByColumn(r,k)));}
 
   function taskHistoryFromDate(id,cur){
     const direct=parseDate(createdValue(cur));
@@ -961,10 +1101,12 @@
     } else if(key==='status'){
       const k=statusKey(r.Estado||r.status);const map={started:['FFEB9C','815F00'],suspended:['FFD7DC','A12734'],assigned:['DCE9FF','215CAD'],enroute:['D8EEF7','1C617A'],scheduled:['EADCFF','64409B'],completed:['D8F4E6','00734A'],cancelled:['ECE7FF','6038A8']};
       if(map[k])cell.s={...base,fill:{fgColor:{rgb:map[k][0]}},font:{...base.font,bold:true,color:{rgb:map[k][1]}}};
-    } else if(key==='capa'){
-      const c=capaClass(capa(r));const fill={edificio:XL.blue,fibra:XL.fibra,infra:XL.infra,usac:XL.usac}[c];if(fill)cell.s={...base,fill:{fgColor:{rgb:fill}}};
+    } else if(key==='capa'||key==='subcapa'){
+      const c=key==='capa'?capaClass(capa(r)):subcapaClass(subcapa(r));const fill={edificio:XL.blue,fibra:XL.fibra,infra:XL.infra,usac:XL.usac,ingress:'EADCFF',leak:'EADCFF'}[c];if(fill)cell.s={...base,fill:{fgColor:{rgb:fill}}};
     } else if(key==='origin'&&originClass(origin(r))==='externo'){
       cell.s={...base,fill:{fgColor:{rgb:XL.infra}}};
+    } else if(key==='origin'&&originClass(origin(r))==='preventivo'){
+      cell.s={...base,fill:{fgColor:{rgb:XL.green}},font:{...base.font,bold:true,color:{rgb:XL.greenText}}};
     } else if(key==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))){
       cell.s={...base,fill:{fgColor:{rgb:XL.red}},font:{...base.font,bold:true,color:{rgb:XL.redText}}};
     } else if(key==='affected'){
@@ -1045,6 +1187,7 @@
     if(key==='scheduled'){return `<td>${esc(formatDateOnly(scheduled(r)))}</td>`;}
     if(key==='tipif'){const v=siglaTarea(r);return `<td class="${['VFF','FMR','VFE'].includes(upper(v))?'tipif-alert':''}">${esc(v)}</td>`;}
     if(key==='capa'){return `<td class="capa-cell ${capaClass(capa(r))}">${esc(capa(r)||'—')}</td>`;}
+    if(key==='subcapa'){return `<td class="subcapa-cell ${subcapaClass(subcapa(r))}">${esc(subcapa(r)||'—')}</td>`;}
     if(key==='origin'){return `<td class="origin-cell ${originClass(origin(r))}">${esc(origin(r)||'—')}</td>`;}
     const value = key==='task'?taskId(r):key==='node'?node(r):key==='tipif'?siglaTarea(r):key==='subcapa'?subcapa(r):key==='origin'?origin(r):key==='event'?(oracleEvent(r)||parentEvent(r)):key==='parentEvent'?parentEvent(r):key==='contractor'?contractor(r):rowValueByColumn(r,key);
     const duplicate=dups&&((key==='node'&&dups.nodes.has(upper(node(r))))||(key==='parentEvent'&&dups.parents.has(upper(parentEvent(r)))));
@@ -1203,10 +1346,12 @@
       const a=Number(eventAgeDays(r)),fill=a>=3?'FFC7CE':a>=2?'FFEB9C':'C6EFCE',color=a>=3?'9C0006':a>=2?'8A6400':'007D51';cell.fill=excelJsFill(fill);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(color)}};
     } else if(key==='status'){
       const map={started:['FFEB9C','815F00'],suspended:['FFD7DC','A12734'],assigned:['DCE9FF','215CAD'],enroute:['D8EEF7','1C617A'],scheduled:['EADCFF','64409B'],completed:['D8F4E6','00734A'],cancelled:['ECE7FF','6038A8']};const m=map[statusKey(r.Estado||r.status)];if(m){cell.fill=excelJsFill(m[0]);cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb(m[1])}};}
-    } else if(key==='capa'){
-      const c=capaClass(capa(r)),fill={edificio:'D9EAFA',fibra:'FFE69A',infra:'FFC2CA',usac:'D8EFD0'}[c];if(fill)cell.fill=excelJsFill(fill);
+    } else if(key==='capa'||key==='subcapa'){
+      const c=key==='capa'?capaClass(capa(r)):subcapaClass(subcapa(r)),fill={edificio:'D9EAFA',fibra:'FFE69A',infra:'FFC2CA',usac:'D8EFD0',ingress:'EADCFF',leak:'EADCFF'}[c];if(fill)cell.fill=excelJsFill(fill);
     } else if(key==='origin'&&originClass(origin(r))==='externo'){
       cell.fill=excelJsFill('FFC2CA');cell.font={name:'Arial',size:10,color:{argb:'FF9C0006'}};
+    } else if(key==='origin'&&originClass(origin(r))==='preventivo'){
+      cell.fill=excelJsFill('C6EFCE');cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb('007D51')}};
     } else if(key==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))){
       cell.fill=excelJsFill('FFC7CE');cell.font={name:'Arial',size:10,bold:true,color:{argb:excelJsArgb('9C0006')}};
     } else if(key==='affected'){
@@ -1445,21 +1590,64 @@
     if('ResizeObserver' in window){const ro=new ResizeObserver(updateTableHorizontalScroller);ro.observe(scroller);ro.observe($('#opTable'));state._tableResizeObserver=ro;}
     requestAnimationFrame(updateTableHorizontalScroller);
   }
+
+  // V22.52: ancho por columna persistente y arrastre de borde estilo Excel.
+  const BASE_COLUMN_WIDTHS = {"task": 112, "created": 132, "affected": 70, "priority": 58, "node": 74, "tipif": 54, "status": 88, "subcapa": 78, "origin": 70, "event": 92, "parentEvent": 92, "ageDays": 78, "eventAgeDays": 88, "contractor": 108, "scheduled": 84, "tipificacion": 155, "capa": 78, "eventSigla": 72, "endTime": 108, "tech": 128, "resource": 92, "tree": 80, "mira_total": 70, "mira_up": 70};
+  const manualColumnWidths = (()=>{try{return JSON.parse(localStorage.getItem('ofsc_column_widths_v2252')||'{}')||{}}catch{return {}}})();
+  function columnWidthFor(key){
+    const base=Number(manualColumnWidths[key]||BASE_COLUMN_WIDTHS[key]||95);
+    return Math.max(44,Math.round(base*(Number(state.tableZoom)||90)/90));
+  }
+  function applyTableColumnWidths(){
+    let sheet=document.getElementById('ofscDynamicWidths');
+    if(!sheet){sheet=document.createElement('style');sheet.id='ofscDynamicWidths';document.head.appendChild(sheet);}
+    sheet.textContent=COLUMN_DEFS.map(([key])=>{
+      const w=columnWidthFor(key);
+      return '#opTable [data-column="'+key+'"]{width:'+w+'px!important;min-width:'+w+'px!important;max-width:'+w+'px!important}';
+    }).join('\n');
+    requestAnimationFrame(updateTableHorizontalScroller);
+  }
+  function installColumnResizers(){
+    const hr=document.querySelector('#taskHeaderRow');if(!hr)return;
+    hr.querySelectorAll('th[data-column]').forEach(th=>{
+      if(th.querySelector('.col-resize-handle'))return;
+      const handle=document.createElement('span');handle.className='col-resize-handle';
+      handle.title='Arrastrá para ajustar el ancho de esta columna';
+      handle.addEventListener('pointerdown',e=>{
+        if(e.button!==0)return;
+        e.preventDefault();e.stopPropagation();
+        const key=th.dataset.column, x=e.clientX, first=columnWidthFor(key), scale=(Number(state.tableZoom)||90)/90;
+        let dragged=false;
+        const move=ev=>{dragged=true;manualColumnWidths[key]=Math.max(44,Math.round((first+ev.clientX-x)/scale));applyTableColumnWidths();};
+        const stop=()=>{
+          window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',stop);
+          window.removeEventListener('pointercancel',stop);
+          if(dragged){localStorage.setItem('ofsc_column_widths_v2252',JSON.stringify(manualColumnWidths));}
+          setTimeout(()=>{window.__ofsResizeGuard=false},50);
+        };
+        window.__ofsResizeGuard=true;
+        window.addEventListener('pointermove',move);window.addEventListener('pointerup',stop,{once:true});window.addEventListener('pointercancel',stop,{once:true});
+      });
+      th.appendChild(handle);
+    });
+    applyTableColumnWidths();
+  }
   function applyTableZoom(){
     const card=$('#subview-tasks'),label=$('#tableZoomLabel');
     if(!card)return;
-    const z=Math.max(80,Math.min(110,Number(state.tableZoom)||90));
+    const z=Math.max(80,Math.min(160,Number(state.tableZoom)||90));
     state.tableZoom=z;
-    card.classList.remove('table-density-80','table-density-90','table-density-100','table-density-110');
+    card.classList.remove(...[80,90,100,110,120,130,140,150,160].map(x=>`table-density-${x}`));
     card.classList.add(`table-density-${z}`);
     if(label)label.textContent=`${z}%`;
+    applyTableColumnWidths();
     requestAnimationFrame(updateTableHorizontalScroller);
   }
   function changeTableZoom(delta){
-    const levels=[80,90,100,110];
+    const levels=[80,90,100,110,120,130,140,150,160];
     let idx=levels.indexOf(state.tableZoom);if(idx<0)idx=1;
     idx=Math.max(0,Math.min(levels.length-1,idx+delta));
-    state.tableZoom=levels[idx];applyTableZoom();
+    state.tableZoom=levels[idx];applyTableZoom();savePreferences();
   }
 
 
@@ -1477,7 +1665,7 @@
     const levels=[85,100,115,130];
     let idx=levels.indexOf(Number(state.historyZoom));if(idx<0)idx=1;
     idx=Math.max(0,Math.min(levels.length-1,idx+delta));
-    state.historyZoom=levels[idx];applyHistoryZoom();
+    state.historyZoom=levels[idx];applyHistoryZoom();savePreferences();
   }
   function sideMenuOpen(open=true){
     const menu=$('#sideMenu'),back=$('#sideBackdrop'),btn=$('#btnMenu');if(!menu)return;
@@ -1528,6 +1716,181 @@
   $$('#controlModal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.add('hidden');}));
   $$('[data-close-drawer]').forEach(x=>x.onclick=closeDrawer);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();sideMenuOpen(false);closeMapModal();$('#controlModal')?.classList.add('hidden');document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));document.querySelectorAll('.column-chooser').forEach(d=>d.open=false);}});
+
+
+  // MIRA5 - consultas independientes: nunca bloquean carga OFS
+  const miraKeys = MIRA_FIELDS.map(x=>x[0]);
+  const miraSettingsKey = 'ofsc_mira_popup_v2251';
+  try{const stored=JSON.parse(localStorage.getItem(miraSettingsKey)||'null');mira.selected=new Set(Array.isArray(stored)?stored:['mira_total','mira_up','mira_ofdma','mira_lossPct','mira_pDs','mira_sUs','mira_fdPostPct']);}catch{mira.selected=new Set(['mira_total','mira_up']);}
+  const mPath=(r,path)=>path.split('.').reduce((x,k)=>x?.[k],r);
+  const mNodes=()=>[...new Set(state.filtered.slice((state.page-1)*PAGE_SIZE,state.page*PAGE_SIZE).map(node).map(upper).filter(Boolean))];
+  function mMatch(n,r){return upper(r.nodo||r.nodoCmts).startsWith(n)||upper(r.nodoCmts).startsWith(n);}
+  function miraValue(r,k){
+    const n=upper(node(r));if(!n)return'';
+    const arr=miraLookup(n,k==='mira_total'||k==='mira_up'?'statsNodosCmts':'statsNodos');
+    if(!arr.length)return'';
+    const field=MIRA_FIELDS.find(f=>f[0]===k);if(!field)return'';
+    // Tecnología y Hub son texto. Mostrar valores únicos, sin promediar ni convertir a número.
+    if(k==='mira_tecnologia'||k==='mira_hub'){
+      const values=[...new Set(arr.map(x=>mPath(x,field[2])).filter(x=>x!==null&&x!==undefined&&String(x).trim()!=='').map(x=>String(x).trim()))];
+      return values.join(' / ');
+    }
+    const nums=arr.map(x=>({v:Number(mPath(x,field[2])),w:Number(x.cmStatus?.cmTot)||0,exists:mPath(x,field[2])!=null})).filter(x=>x.exists&&Number.isFinite(x.v));
+    if(!nums.length)return'';
+    if(k==='mira_total')return nums.reduce((a,x)=>a+x.v,0).toLocaleString('es-AR');
+    const weights=nums.reduce((a,x)=>a+x.w,0);
+    const value=weights>0?nums.reduce((a,x)=>a+x.v*x.w,0)/weights:nums.reduce((a,x)=>a+x.v,0)/nums.length;
+    return k==='mira_up'?Math.round(value).toLocaleString('es-AR'):Number(value.toFixed(4)).toLocaleString('es-AR',{maximumFractionDigits:4});
+  }
+  // MIRA5 V22.56: importación manual, sin solicitudes cross-origin.
+  const MIRA_STORE='ofsc_mira_import_v2256';
+  let miraImportPosition=0,miraImportedAt=null;
+  function trimMiraRow(r){
+    if(!r||typeof r!=='object'||Array.isArray(r))return null;
+    const allowed=['_id','nodo','nodoCmts','cmts','tipoNodo','hub','equipo','cmStatus','cmPartialService','cmIcmp','cmTrafico','cmPwr','cmSnr','cmFecDs','cmFecUs','cmFecDsOfdm','cmFecUsOfdm','cmFrecuencias','cmCant','cmPnm','region','poller'];
+    return Object.fromEntries(allowed.filter(k=>Object.prototype.hasOwnProperty.call(r,k)).map(k=>[k,r[k]]));
+  }
+  function miraPersist(){
+    // Guardamos solamente estadísticas consolidadas (sin Ds/Us individuales).
+    const data={date:miraImportedAt||new Date().toISOString(),summary:[...new Map([...mira.summary.values()].flat().map(r=>[r._id||r.nodoCmts||r.nodo,r])).values()].map(trimMiraRow),full:[...new Map([...mira.full.values()].flat().map(r=>[r._id||r.nodo,r])).values()].map(trimMiraRow)};
+    try{localStorage.setItem(MIRA_STORE,JSON.stringify(data));return true;}
+    catch(e){setMiraStatus('MIRA5: almacenamiento lleno. Exportá menos nodos.');console.warn('localStorage MIRA5',e);return false;}
+  }
+  function miraRestore(){try{
+    const saved=JSON.parse(localStorage.getItem(MIRA_STORE)||'null');if(!saved)return;
+    for(const [map,rows] of [[mira.summary,saved.summary],[mira.full,saved.full]]){
+      const all=Array.isArray(rows)?rows:[];
+      // Registrar los prefijos exactos utilizados anteriormente y reconstruir posteriormente bajo demanda.
+      for(const r of all){const n=upper(r.nodo||r.nodoCmts);if(n){if(!map.has(n))map.set(n,[]);map.get(n).push(r);}}
+    }
+    miraImportedAt=saved.date||null;
+    miraSyncStatus();
+  }catch(e){console.warn('MIRA5: no se pudo restaurar caché',e);}}
+  function miraLookup(n,collection){
+    const map=collection==='statsNodosCmts'?mira.summary:mira.full;
+    if(map.has(n))return map.get(n);
+    return [...new Map([...map.values()].flat().filter(r=>mMatch(n,r)).map(r=>[r._id||r.nodoCmts||r.nodo,r])).values()];
+  }
+  function miraSyncStatus(){const total=[...new Set([...mira.summary.values(),...mira.full.values()].flat().map(r=>upper(r.nodo||r.nodoCmts)))].length;setMiraStatus(miraImportedAt?'MIRA importado '+new Date(miraImportedAt).toLocaleString('es-AR')+' · '+total+' nodos':'MIRA5: sin datos importados · Activá VPN y usá Actualizar MIRA5');}
+  function scheduleMiraScan(){ /* manual: jamás abrir peticiones automáticas a MIRA5 */ }
+  async function refreshMira(){miraSyncStatus();renderMiraCells();}
+  // Exportación ORIGINAL provista por el usuario. No agregar filtros: no está comprobado que export los admita.
+  const MIRA_EXPORT_FIELDS=[['_id','id','text'],['nodoCmts','Link','text'],['nodoCmts','NodoCmts','text'],['nodo','Nodo','text'],['tipoNodo','Tipo Nodo','text'],['cmts','Cmts','text'],['cmStatus.cmTot','Total','int'],['cmStatus.cmUpPercent','Up%','int'],['cmStatus.cmTot','Total','int'],['cmPartialService.ofdmaPercent','OFDMA','int']];
+  function miraExportUrl(){
+    const params=new URLSearchParams({coll:'statsNodosCmts',model:JSON.stringify(MIRA_EXPORT_FIELDS.map(([name,label,formatter])=>({name,label,formatter})))});
+    // PHP original utiliza la presencia del parámetro export sin valor.
+    return 'https://mira5-gdt.telecentro.net.ar/controller_grid_mira_gral.php?'+params.toString()+'&export';
+  }
+  // Importación manual explícita: no solicitamos permisos de carpetas.
+  // Descargar Excel abre la exportación oficial; Actualizar permite seleccionar el archivo.
+  // MIRA5 exporta ocho columnas de texto inline en XLSX. Usamos JSZip para leer
+  // únicamente sheet1.xml, sin construir el libro entero en XLSX-js-style.
+  // Esto reduce fuertemente el uso de memoria para las ~16.800 filas.
+  async function miraImportXlsx(file){
+    const msg=$('#miraImportFeedback');
+    if(!file)throw Error('Seleccioná el archivo export.xlsx.');
+    if(!/\.xlsx$/i.test(file.name))throw Error('Seleccioná export.xlsx (formato XLSX).');
+    if(!file.size)throw Error('El archivo está vacío.');
+    if(file.size>40*1024*1024)throw Error('El archivo supera 40 MB; no se importará.');
+    if(!window.JSZip)throw Error('No se cargó JSZip. Revisá la conexión a internet.');
+    const progress=async text=>{msg.textContent=text;await new Promise(r=>setTimeout(r,0));};
+    await progress('Procesando archivo… Leyendo '+file.name+' ('+(file.size/1048576).toFixed(2)+' MB)');
+    let zip;
+    try{zip=await window.JSZip.loadAsync(file);}catch(e){throw Error('El archivo no es un XLSX válido: '+e.message);}
+    const sheet=zip.file('xl/worksheets/sheet1.xml');
+    if(!sheet)throw Error('No se encontró la hoja de datos de MIRA5.');
+    await progress('Procesando archivo… Descomprimiendo hoja Excel');
+    const xml=await sheet.async('string');
+    // El export de MIRA5 usa c t="inlineStr", con texto en is/t. La ruta
+    // de respaldo también admite valores numéricos en <v> y sharedStrings.
+    const shared=[];
+    const sharedFile=zip.file('xl/sharedStrings.xml');
+    if(sharedFile){
+      const ss=await sharedFile.async('string');
+      for(const m of ss.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g))shared.push([...m[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(x=>x[1]).join(''));
+    }
+    const unescapeXml=t=>String(t??'').replace(/&(?:amp|lt|gt|quot|apos|#x[0-9a-f]+|#[0-9]+);/gi,x=>{
+      const named={'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'"};
+      if(named[x])return named[x];if(x.startsWith('&#')){const n=x[2].toLowerCase()==='x'?parseInt(x.slice(3,-1),16):parseInt(x.slice(2,-1),10);return Number.isFinite(n)?String.fromCodePoint(n):x;}return x;
+    });
+    const norm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9%]/gi,'').toLowerCase();
+    const numeric=x=>{const s=String(x??'').trim().replace(/%/g,'');if(!s)return NaN;return Number(s.includes(',')?s.replace(/\./g,'').replace(',','.'):s);};
+    const columnIndex=letters=>[...letters].reduce((v,c)=>v*26+c.charCodeAt(0)-64,0)-1;
+    let header=null,parsed=[],processed=0,skipped=0;
+    for(const rm of xml.matchAll(/<row\b[^>]*\br="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)){
+      const cells={};
+      for(const cm of rm[2].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)){
+        const addr=/\br="([A-Z]+)\d+"/.exec(cm[1]);if(!addr)continue;
+        const col=columnIndex(addr[1]);const ty=/\bt="([^"]+)"/.exec(cm[1])?.[1];
+        const inline=[...cm[2].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(x=>x[1]).join('');
+        const raw=/<v>([\s\S]*?)<\/v>/.exec(cm[2])?.[1]??'';
+        cells[col]=unescapeXml(ty==='s'?shared[Number(raw)]:(ty==='inlineStr'?inline:(inline||raw)));
+      }
+      if(!header){
+        const heads=Object.entries(cells);const lookup=(...names)=>heads.find(([k,v])=>names.map(norm).includes(norm(v)))?.[0];
+        const n=lookup('Nodo'),nc=lookup('NodoCmts','Nodo Cmts'),total=lookup('Total','Total CM'),up=lookup('Up%','Up %','CM Up %');
+        if(n!==undefined&&total!==undefined&&up!==undefined){header={n,nc,total,up,cmts:lookup('Cmts'),tipo:lookup('Tipo Nodo'),ofdma:lookup('OFDMA','OFDMA%')};}
+        continue;
+      }
+      const value=k=>k===undefined?'':String(cells[k]??'').trim();
+      const nodo=value(header.n),nc=value(header.nc)||nodo;
+      if(!nodo&&!nc)continue;
+      const total=numeric(value(header.total)),up=numeric(value(header.up));
+      if(!Number.isFinite(total)||!Number.isFinite(up)){skipped++;continue;}
+      parsed.push({nodo,nodoCmts:nc,cmts:value(header.cmts),tipoNodo:value(header.tipo),cmStatus:{cmTot:total,cmUpPercent:up},cmPartialService:{ofdmaPercent:numeric(value(header.ofdma))}});
+      processed++;
+      if(processed%2000===0)await progress('Procesando archivo… '+processed.toLocaleString('es-AR')+' registros leídos');
+    }
+    if(!header)throw Error('El XLSX no contiene las columnas Nodo, Total y Up%.');
+    if(!parsed.length)throw Error('No se encontraron registros válidos.');
+    await progress('Procesando archivo… Guardando '+parsed.length.toLocaleString('es-AR')+' registros');
+    miraImportOne({rows:parsed},'statsNodosCmts');
+    miraFinalizeImport(parsed.length);
+    msg.textContent='Importación completada: '+parsed.length.toLocaleString('es-AR')+' registros de '+file.name+'. '+(skipped?skipped+' filas omitidas.':'')+' Las columnas y el popup se actualizaron.';
+    return parsed.length;
+  }
+  function miraDownloadExcel(){
+    const msg=$('#miraImportFeedback');
+    const w=window.open(miraExportUrl(),'_blank','noopener,noreferrer');
+    msg.textContent=w?'MIRA5 abrió la exportación. Cuando termine la descarga, pulsá Actualizar y elegí el Excel.':'Chrome bloqueó la pestaña. Permití ventanas emergentes para este sitio e intentá Descargar Excel nuevamente.';
+  }
+  function miraChooseExcel(){
+    $('#miraImportFeedback').textContent='Seleccioná export.xlsx desde Descargas.';
+    $('#miraImportFallback').click();
+  }
+  function miraImportOne(data,coll){
+    if(!data||!Array.isArray(data.rows))throw Error('El archivo no contiene un array rows de MIRA5.');
+    const rows=data.rows.map(trimMiraRow).filter(r=>r&&(r.nodo||r.nodoCmts));
+    const map=coll==='statsNodosCmts'?mira.summary:mira.full;
+    const all=[...map.values()].flat();const merged=new Map(all.map(r=>[String(r._id||r.nodoCmts||r.nodo),r]));
+    for(const r of rows)merged.set(String(r._id||r.nodoCmts||r.nodo),r);
+    map.clear();for(const r of merged.values()){const key=upper(r.nodo||r.nodoCmts);if(!map.has(key))map.set(key,[]);map.get(key).push(r);}
+    return rows.length;
+  }
+  function miraFinalizeImport(count){miraImportedAt=new Date().toISOString();const saved=miraPersist();miraSyncStatus();renderMiraCells();$('#miraImportFeedback').textContent=`Importados ${count} registros. ${saved?'Guardados en este navegador.':'No pudieron guardarse: almacenamiento lleno.'} Las columnas y el popup ya están actualizados.`;}
+  function openMiraImporter(){
+    $('#miraImportFeedback').textContent='Primero descargá el Excel, después elegilo con Actualizar. No se requieren permisos para carpetas.';
+    $('#miraImportModal').classList.remove('hidden');
+  }
+  $('#btnMiraImport').onclick=openMiraImporter;
+  $('#miraImportClose').onclick=()=>$('#miraImportModal').classList.add('hidden');
+  $('#miraImportDownload').onclick=miraDownloadExcel;
+  $('#miraImportUpdate').onclick=miraChooseExcel;
+  $('#miraImportFallback').onchange=async e=>{
+    const file=e.target.files?.[0];if(!file)return;
+    const btn=$('#miraImportUpdate');btn.disabled=true;btn.textContent='Procesando…';
+    try{await miraImportXlsx(file);}catch(err){$('#miraImportFeedback').textContent='Error al importar Excel: '+err.message;}
+    finally{btn.disabled=false;btn.textContent='Actualizar';e.target.value='';}
+  };
+  miraRestore();
+  function setMiraStatus(s){const el=$('#miraLastQuery');if(el)el.textContent=s;}
+  function renderMiraCells(){document.querySelectorAll('#opTbody tr[data-task]').forEach(tr=>{const r=state.filtered.find(x=>taskId(x)===tr.dataset.task);if(!r)return;tr.querySelectorAll('[data-column^="mira_"]').forEach(td=>{const key=td.dataset.column;td.innerHTML=cellHtml(r,key);});});}
+  function showMiraPopup(n){const modal=$('#miraModal');const title=$('#miraPopupTitle'),body=$('#miraPopupBody');title.textContent='MIRA5 · '+n;const lookup=miraLookup(upper(n),'statsNodos');const summary=miraLookup(upper(n),'statsNodosCmts');const metric=(k)=>{const r={Nodo:n};return miraValue(r,k) || (miraValue(r,k)===0?'0':'—');};
+    body.innerHTML=`<p class="mira-vpn">Para ver valores o estado del nodo, recordá activar la VPN.</p><div class="mira-popup-grid">${MIRA_FIELDS.filter(([k])=>mira.selected.has(k)).map(([k,l])=>`<div><small>${esc(l)}</small><strong>${esc(metric(k))}</strong></div>`).join('')}</div><p class="muted">${summary.length} registros Nodo/CMTS · ${lookup.length} registros de estadísticas completas. Los indicadores múltiples son promedios ponderados por total CM (excepto Total CM). No suman porcentajes ni errores entre frecuencias.</p>`;modal.classList.remove('hidden');}
+  function showMiraSettings(){const p=$('#miraSettingsBody');p.innerHTML=MIRA_FIELDS.map(([k,l])=>`<label><input type="checkbox" value="${k}" ${mira.selected.has(k)?'checked':''}> ${esc(l)}</label>`).join('');p.querySelectorAll('input').forEach(el=>el.onchange=()=>{el.checked?mira.selected.add(el.value):mira.selected.delete(el.value);localStorage.setItem(miraSettingsKey,JSON.stringify([...mira.selected]));});$('#miraSettingsModal').classList.remove('hidden');}
+  $('#miraPopupClose').onclick=()=>$('#miraModal').classList.add('hidden');$('#miraSettingsClose').onclick=()=>$('#miraSettingsModal').classList.add('hidden');$('#miraGear').onclick=showMiraSettings;
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#miraModal').classList.add('hidden');$('#miraSettingsModal').classList.add('hidden');$('#miraImportModal').classList.add('hidden');}});
+  // Sin polling: la actualización es explícitamente manual mediante importación.
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
