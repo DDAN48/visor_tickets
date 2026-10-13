@@ -1166,3 +1166,102 @@ main{padding:10px 12px;max-width:none}.sticky-dashboard{position:sticky;top:58px
 .excel-filter-portal .multi-empty{
   font-size:11px!important;
 }
+
+
+/* V22.48 — Subcapa cromática + filtro por color + Origen Preventivo */
+#opTable td.subcapa-cell.edificio,.export-capture-preview td.subcapa-cell.edificio{background:#d9eafa!important}
+#opTable td.subcapa-cell.infra,.export-capture-preview td.subcapa-cell.infra{background:#ffc2ca!important}
+#opTable td.subcapa-cell.fibra,.export-capture-preview td.subcapa-cell.fibra{background:#ffe69a!important}
+#opTable td.subcapa-cell.usac,.export-capture-preview td.subcapa-cell.usac{background:#d8efd0!important}
+#opTable td.subcapa-cell.ingress,.export-capture-preview td.subcapa-cell.ingress,
+#opTable td.subcapa-cell.leak,.export-capture-preview td.subcapa-cell.leak{background:#eadcff!important}
+
+#opTable td.origin-cell.preventivo,.export-capture-preview td.origin-cell.preventivo{
+  background:#c6efce!important;color:#007d51!important;font-weight:900!important
+}
+
+.color-filter-box{border-bottom:1px solid #e2e8f0;margin:0 0 6px;padding:1px 0 7px}
+.color-filter-title{font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;margin:2px 0 5px}
+.color-filter-options{display:flex;flex-wrap:wrap;gap:5px}
+.color-filter-chip{display:inline-flex;align-items:center;gap:5px;min-height:28px;border:1px solid #d7e0e9;background:#fff;color:#334155;border-radius:6px;padding:3px 7px;font-size:10px;font-weight:800;cursor:pointer}
+.color-filter-chip:hover{background:#f8fafc}
+.color-filter-chip.active{border-color:#2563eb;box-shadow:0 0 0 1px #2563eb inset;background:#eff6ff}
+.color-swatch,.filter-value-swatch{display:inline-block;flex:0 0 auto;width:15px;height:15px;border:1px solid #aeb9c5;border-radius:3px}
+.clear-swatch{display:grid;place-items:center;background:#fff;color:#64748b;font-size:11px;line-height:1}
+.excel-filter-portal .multi-option{display:grid!important;grid-template-columns:20px 16px minmax(0,1fr)!important;gap:6px!important}
+.excel-filter-portal .multi-option:not(:has(.filter-value-swatch)){grid-template-columns:20px minmax(0,1fr)!important}
+
+/* V22.51: métricas MIRA5 / zoom ampliado */
+.mira-status{padding:5px 12px;font-size:11px;font-weight:650;color:#175a83;background:#ecf6ff;border-bottom:1px solid #d5e3ef}
+.mira-click{border:0;background:transparent;color:#12619b;cursor:pointer;font-size:inherit;font-weight:650;text-decoration:underline;text-decoration-style:dotted}
+.mira-dialog{position:fixed;inset:0;background:#0b203777;z-index:20000;display:grid;place-items:center;padding:12px}
+.mira-dialog.hidden{display:none!important}
+.mira-dialog-card{background:white;color:#172e47;border-radius:12px;padding:15px;max-width:760px;width:min(100%,760px);max-height:85vh;overflow:auto;box-shadow:0 15px 60px #10243a55}
+.mira-dialog-head{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px}
+.mira-popup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:7px}
+.mira-popup-grid>div{border:1px solid #d9e5ef;background:#f6faff;border-radius:6px;padding:8px}
+.mira-popup-grid small{display:block;color:#526b81;margin-bottom:4px}.mira-popup-grid strong{font-size:15px}
+.mira-vpn{background:#fff2df;padding:8px;border-radius:5px;font-weight:650}
+.mira-settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+.mira-settings-grid label{font-size:12px}
+
+/* V22.52 — Estado MIRA5 en header y tamaños ajustables */
+.top-actions .mira-header-sync{font-size:10px;color:#93d8e8;font-weight:750;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+#opTable{table-layout:fixed!important;width:max-content!important;min-width:100%!important}
+#opTable th[data-column]{position:relative;overflow:visible!important}
+#opTable td[data-column]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#opTable .col-resize-handle{position:absolute;right:-3px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:70;touch-action:none;background:transparent}
+#opTable .col-resize-handle:hover{background:#58a9f5a0}
+#opTable [data-column="mira_total"],#opTable [data-column="mira_up"]{text-align:center}
+#opTable .mira-click{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:850px){.top-actions .mira-header-sync{max-width:150px;font-size:9px}}
+
+/* V22.53 · CM Up inferior al 80 % */
+#opTable td[data-column="mira_up"]:has(.mira-up-low){background:#ffc7ce!important;color:#9c0006!important;}
+#opTable .mira-click.mira-up-low{color:#9c0006!important;font-weight:800;display:block;width:100%;height:100%;text-align:center;background:#ffc7ce;}
+
+/* V22.54: progresión uniforme: sin escalón entre 110 y 120 */
+.table-card.table-density-80 #opTable td{font-size:7.47px!important}
+.table-card.table-density-80 #opTable th{font-size:6.58px!important}
+.table-card.table-density-90 #opTable td{font-size:8.4px!important}
+.table-card.table-density-90 #opTable th{font-size:7.4px!important}
+.table-card.table-density-100 #opTable td{font-size:9.33px!important}
+.table-card.table-density-100 #opTable th{font-size:8.22px!important}
+.table-card.table-density-110 #opTable td{font-size:10.27px!important}
+.table-card.table-density-110 #opTable th{font-size:9.04px!important}
+.table-card.table-density-120 #opTable td{font-size:11.2px!important}
+.table-card.table-density-120 #opTable th{font-size:9.87px!important}
+.table-card.table-density-130 #opTable td{font-size:12.13px!important}
+.table-card.table-density-130 #opTable th{font-size:10.69px!important}
+.table-card.table-density-140 #opTable td{font-size:13.07px!important}
+.table-card.table-density-140 #opTable th{font-size:11.51px!important}
+.table-card.table-density-150 #opTable td{font-size:14.0px!important}
+.table-card.table-density-150 #opTable th{font-size:12.33px!important}
+.table-card.table-density-160 #opTable td{font-size:14.93px!important}
+.table-card.table-density-160 #opTable th{font-size:13.16px!important}
+
+/* Indicadores superiores coherentes y separados visualmente */
+.top-actions{gap:0!important;align-items:center!important}
+.top-actions #loadStatus,.top-actions #miraLastQuery,.top-actions #lastUpdate{font-size:10px!important;font-weight:600!important;line-height:1.3!important;color:#b8d4e8!important;letter-spacing:0!important;white-space:nowrap!important;max-width:36vw;overflow:hidden;text-overflow:ellipsis;padding:0 11px;border-right:1px solid rgba(205,228,248,.32)}
+.top-actions #miraLastQuery{color:#b8d4e8!important}
+.top-actions #lastUpdate{border-right:0}
+.top-actions #btnControl{margin-left:6px}
+@media(max-width:900px){.top-actions #loadStatus,.top-actions #miraLastQuery,.top-actions #lastUpdate{font-size:9px!important;padding:0 5px;max-width:23vw}}
+
+.top-actions .sync-slot{display:inline-flex;align-items:center;border-right:1px solid rgba(205,228,248,.32);padding:0 10px;max-width:35vw;white-space:nowrap;min-width:0}
+.top-actions .sync-slot #loadStatus,.top-actions .sync-slot #lastUpdate{border:0!important;padding:0!important;max-width:25vw!important}
+.top-actions .sync-prefix{color:#b8d4e8;font-size:10px;font-weight:600}
+
+/* V22.56: importación local MIRA5 */
+.mira-header-btn{background:#183c60;color:#e8f5ff;border:1px solid #42698d;border-radius:5px;padding:4px 8px;font:inherit;cursor:pointer;white-space:nowrap}
+.mira-header-btn:hover{background:#285579}
+.mira-import-card{width:min(850px,96vw);max-height:88vh;overflow:auto}
+.mira-import-controls{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin:10px 0}
+.mira-import-controls label,.mira-import-file{display:flex;flex-direction:column;gap:5px;font-weight:600}
+.mira-import-controls textarea,.mira-import-controls select,.mira-import-paste textarea{width:100%;padding:9px;border:1px solid #a9bdd3;border-radius:6px;background:#fff;color:#172338;box-sizing:border-box}
+.mira-import-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.mira-import-file{border:1px dashed #92a9c3;border-radius:8px;padding:15px;margin:14px 0}
+.mira-import-paste textarea{display:block;margin:9px 0}
+#miraImportFeedback{white-space:pre-wrap}
+@media(max-width:650px){.mira-import-controls{grid-template-columns:1fr}}
+
