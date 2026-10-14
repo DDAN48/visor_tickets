@@ -1,0 +1,176 @@
+/* Consulta ETA - six opt-in appearance themes. Original has no base overrides. */
+.visual-nav-item{margin-top:8px;background:#f0f5fc;color:#244875;border:1px solid #dbe7f3}
+.visual-nav-item:hover{background:#dbeaff}
+.eta-visual-backdrop{position:fixed;inset:58px 0 0;background:rgba(10,21,38,.26);z-index:800}
+.eta-visual-panel{position:fixed;top:58px;right:0;bottom:0;width:min(440px,100vw);z-index:801;background:#fff;color:#17263a;transform:translateX(105%);transition:transform .22s ease;box-shadow:-12px 0 40px #14263b30;display:flex;flex-direction:column;border-left:1px solid #dbe4ef;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif}
+.eta-visual-panel.open{transform:none}
+.eta-visual-head{padding:18px 20px 12px;display:flex;align-items:start;justify-content:space-between;border-bottom:1px solid #e5eaf2;gap:12px}
+.eta-visual-head h2{font-size:17px;line-height:1.2;margin:0}.eta-visual-head p{font-size:11px;color:#6d7e93;margin:6px 0 0}
+.eta-visual-head button{border:0;background:transparent;font-size:25px;color:#62748b;cursor:pointer}
+.eta-visual-scroll{overflow:auto;padding:12px 18px 22px;flex:1}
+.eta-visual-scroll section{margin:0 0 18px}.eta-visual-scroll h3{margin:5px 0 10px;font-size:12px;font-weight:850;color:#183252}.eta-hint{font-size:11px;margin:-5px 0 12px;color:#718097}
+.eta-theme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.eta-theme-card{min-height:113px;border:1px solid #dce5ef;background:#fff;padding:8px 5px;display:flex;align-items:center;flex-direction:column;gap:5px;cursor:pointer;border-radius:9px;position:relative;color:#22374d}
+.eta-theme-card.selected,.eta-palette-card.selected{border-color:#1d67e8;box-shadow:0 0 0 1px #1d67e8;background:#f4f8ff}.eta-theme-card b{font-size:11px}.eta-theme-card small{font-size:9px;line-height:1.15;color:#73849b;text-align:center}.eta-theme-card em{position:absolute;top:-10px;left:5px;background:#1e64cc;color:#fff;border-radius:4px;font-size:8px;padding:3px 5px;font-style:normal}
+.eta-theme-mini{height:39px;width:77px;border-radius:5px;border:1px solid #cdd8e5;background:#f6f9fd;display:flex;flex-direction:column;gap:4px;padding:7px 5px}
+.eta-theme-mini i{height:6px;border-radius:1px;background:#d4e3f7}.eta-theme-mini i:first-child{background:#204269}.eta-theme-mini[data-mini=sky]{background:#f0f8ff}.eta-theme-mini[data-mini=sky] i:first-child{background:#0489be}.eta-theme-mini[data-mini=noche]{background:#0d1728;border-color:#31435f}.eta-theme-mini[data-mini=noche] i{background:#263954}.eta-theme-mini[data-mini=retro]{background:#d6d3c9;border-color:#8a897e}.eta-theme-mini[data-mini=retro] i{background:#9b9a8c}.eta-theme-mini[data-mini=clasico]{background:#f2f2f1}.eta-theme-mini[data-mini=clasico] i:first-child{background:#12567e}.eta-theme-mini[data-mini=compacto]{gap:2px}.eta-theme-mini[data-mini=compacto] i{height:4px}
+.eta-color-row{display:grid;grid-template-columns:16px minmax(0,1fr) 36px 73px;gap:9px;align-items:center;margin:0 0 9px;font-size:11px;font-weight:600;min-height:28px}.eta-swatch{width:16px;height:16px;border-radius:50%;border:1px solid #0001}.eta-color-row input{width:36px;height:26px;padding:0;border:1px solid #d5e0ed;border-radius:6px;background:#fff;cursor:pointer}.eta-color-row code{font-family:inherit;font-size:10px;color:#50627a;background:#f4f6f9;padding:6px 3px;border-radius:5px;text-align:center}
+.eta-palette-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.eta-palette-card{cursor:pointer;border:1px solid #dce5ef;background:#fff;border-radius:8px;min-height:54px;padding:5px 2px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px}.eta-palette-card span{display:flex;gap:2px}.eta-palette-card i{width:13px;height:13px;border-radius:50%;border:1px solid #0001}.eta-palette-card b{font-size:9px}
+.eta-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #edf0f5;cursor:pointer}.eta-setting span{display:flex;flex-direction:column;gap:4px}.eta-setting b{font-size:11px}.eta-setting small{font-size:10px;color:#7a899a}.eta-setting input{width:34px;height:19px;accent-color:#226be4;cursor:pointer;flex-shrink:0}
+.eta-legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:#f7f9fc;border:1px solid #e3e8f1;border-radius:8px;margin-top:12px;font-size:10px}.eta-legend div{display:flex;align-items:center;gap:7px}.eta-legend i{width:11px;height:11px;border-radius:3px;border:1px solid #0001}
+.eta-preview{border:1px solid #e0e8f1;border-radius:8px;overflow:hidden;font-size:9px}.eta-preview-head,.eta-preview-row{display:grid;grid-template-columns:1fr 1.4fr 1.1fr .9fr .8fr}.eta-preview-head{background:#18304d;color:#fff;font-weight:800}.eta-preview-row{background:#fff}.eta-preview-head span,.eta-preview-row span{padding:7px 4px;border-right:1px solid #dde5ee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eta-visual-actions{display:flex;gap:8px;padding:13px 18px;border-top:1px solid #e0e8f1;background:#fff}.eta-visual-actions button{padding:11px;border-radius:8px;font-weight:800;font-size:11px;cursor:pointer;border:1px solid #cbd8e8;flex:1;background:#f7fafd;color:#193b65}.eta-visual-actions #etaVisualApply{background:#1556bc;color:#fff;border-color:#1556bc}
+/* Applies only if a different visual theme is chosen. Never alter original unconfigured look. */
+:root[data-eta-theme=sky]{--bg:#eef8fc;--card:#ffffff;--line:#c8e5ef;--text:#17364b;--primary:#087ca9;--blue:#087ca9}
+:root[data-eta-theme=sky] .topbar{background:linear-gradient(100deg,#0750ae,#078cbb 65%,#086d92)!important}
+:root[data-eta-theme=sky] .brand-mark{background:#10b98d!important}
+:root[data-eta-theme=sky] #taskHeaderRow th{background:#143e60!important;color:#fff!important}
+:root[data-eta-theme=sky] .card{box-shadow:0 3px 10px #087ca912}
+:root[data-eta-theme=noche]{--bg:#0d1724;--card:#152337;--line:#304259;--text:#e1ebf8;--muted:#a9b8cb;--primary:#38bcb5;--blue:#73aefb}
+:root[data-eta-theme=noche] body,:root[data-eta-theme=noche] .sticky-dashboard{background:#0d1724!important;color:#e1ebf8!important}
+:root[data-eta-theme=noche] .topbar{background:#091321!important}
+:root[data-eta-theme=noche] .card,:root[data-eta-theme=noche] .table-head,:root[data-eta-theme=noche] .table-footer,:root[data-eta-theme=noche] .table-daily-state,:root[data-eta-theme=noche] .kpi{background:#152337;color:#e1ebf8;border-color:#304259}
+:root[data-eta-theme=noche] #opTable td{background:#142235;color:#d9e5f3;border-color:#2a3b50}
+:root[data-eta-theme=noche] #opTable tbody tr:nth-child(even) td{background:#192a3f}
+:root[data-eta-theme=noche] #opTable tbody td a{color:#79beff!important}
+:root[data-eta-theme=noche] #opTable th{background:#0a1423!important;color:#e1ebf8!important}
+:root[data-eta-theme=noche] .toolbar-grid input,:root[data-eta-theme=noche] .multi>button,:root[data-eta-theme=noche] .fixed-window-value,:root[data-eta-theme=noche] .icon-action{background:#182a40!important;color:#ecf4ff!important;border-color:#3b5067!important}
+:root[data-eta-theme=noche] .toolbar-grid label,:root[data-eta-theme=noche] .field{color:#b8c9dd!important}
+:root[data-eta-theme=noche] .muted,:root[data-eta-theme=noche] .table-head .muted{color:#b0c1d5!important}
+:root[data-eta-theme=noche] .created-white,:root[data-eta-theme=noche] .age-white{background:#142235!important;color:#e1ebf8!important}
+:root[data-eta-theme=noche] .created-yellow,:root[data-eta-theme=noche] .age-yellow{background:#514121!important;color:#ffe39c!important}
+:root[data-eta-theme=noche] .created-old,:root[data-eta-theme=noche] .age-red{background:#5e2f39!important;color:#ffb3b3!important}
+:root[data-eta-theme=noche] .created-green,:root[data-eta-theme=noche] .age-green{background:#164a46!important;color:#9ae8c8!important}
+:root[data-eta-theme=noche] #opTable td.subcapa-cell.infra{background:#532f43!important;color:#ffccd8!important}
+:root[data-eta-theme=noche] #opTable td.subcapa-cell.fibra{background:#4c401f!important;color:#ffe3a5!important}
+:root[data-eta-theme=noche] #opTable td.subcapa-cell.usac{background:#1e453c!important;color:#a6e7ce!important}
+:root[data-eta-theme=noche] #opTable td.subcapa-cell.edificio{background:#1b4058!important;color:#c0e4ff!important}
+:root[data-eta-theme=retro]{--bg:#c9c9c9;--card:#dbdbdb;--line:#858585;--text:#111;--primary:#008080;--blue:#003cbb}
+:root[data-eta-theme=retro] body{font-family:Tahoma,'MS Sans Serif',Verdana,sans-serif!important;background:#bfbfbf!important}
+:root[data-eta-theme=retro] .topbar{background:#001b7e!important;border-radius:0!important}
+:root[data-eta-theme=retro] .card,:root[data-eta-theme=retro] .kpi,:root[data-eta-theme=retro] button{border-radius:0!important}
+:root[data-eta-theme=retro] .card{box-shadow:inset 2px 2px #f8f8f8,inset -2px -2px #888}
+:root[data-eta-theme=retro] #taskHeaderRow th{background:#cdcdcd!important;color:#111!important;border:1px outset #fff!important}
+:root[data-eta-theme=retro] .table-head{background:#008080!important;color:#fff!important}
+:root[data-eta-theme=clasico]{--bg:#f2f3f5;--card:#fff;--line:#cbd1d8;--text:#1f2937;--primary:#14607e;--blue:#075aab}
+:root[data-eta-theme=clasico] .topbar{background:#163d60!important}
+:root[data-eta-theme=clasico] #taskHeaderRow th{background:#264a69!important;color:#fff!important}
+:root[data-eta-theme=clasico] .card{border-radius:4px!important;box-shadow:none!important}
+:root[data-eta-theme=compacto]{--bg:#f4f6f8;--card:#fff;--line:#d8dce1;--text:#253347;--primary:#176ea2}
+:root[data-eta-theme=compacto] #taskHeaderRow th{background:#172b41!important;color:#fff!important}
+:root.eta-visual-dense #opTable tbody td{padding-top:1px!important;padding-bottom:1px!important}
+:root.eta-visual-dense .kpi{min-height:26px!important;padding-top:2px!important;padding-bottom:2px!important}
+:root.eta-visual-nochips #opTable .status-pill{border-radius:2px!important;background:transparent!important;box-shadow:none!important}
+:root.eta-visual-muted #opTable tbody td.subcapa-cell,:root.eta-visual-muted #opTable .status-pill{filter:saturate(.65)}
+/* User-selected semantic colors map to both table and filter vocabulary. */
+:root.eta-visual-custom #opTable td.created-yellow,:root.eta-visual-custom #opTable td.age-yellow{background:var(--eta-created)!important;color:#6a4e22!important}
+:root.eta-visual-custom #opTable td.created-old{background:var(--eta-parent)!important;color:#742431!important}
+:root.eta-visual-custom #opTable td.age-red{background:var(--eta-parent)!important;color:#742431!important}
+:root.eta-visual-custom #opTable td.subcapa-cell.infra{background:var(--eta-infra)!important;color:#673240!important}
+:root.eta-visual-custom #opTable td.subcapa-cell.fibra{background:var(--eta-fibra)!important;color:#6c4b17!important}
+:root.eta-visual-custom #opTable .status-pill.suspended{background:var(--eta-suspended)!important;color:#6d1829!important}
+:root.eta-visual-custom.eta-visual-nokpis .kpi{filter:grayscale(.55)}
+@media(max-width:600px){.eta-visual-panel{width:100vw}.eta-theme-grid{grid-template-columns:repeat(3,1fr)}}
+
+/* V23.1 - legibilidad operativa e Ingreso ETA; no afecta los colores de los temas */
+.table-head .head-actions{gap:7px!important;align-items:center!important}
+#etaIngresoSummary{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:30px;min-height:30px;padding:0 12px;
+  border:1px solid var(--line,#d6dee7);border-radius:8px;
+  background:var(--card,#fff);color:var(--text,#20334a);
+  font-size:11px!important;line-height:1.15;font-weight:800;
+  white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+#dailyStateDetails>summary{font-size:11px!important;min-height:30px!important;height:30px!important;padding:0 11px!important;display:flex!important;align-items:center!important;font-weight:800!important;white-space:nowrap}
+.table-zoom{height:30px!important;min-height:30px!important;padding:2px 5px!important;gap:5px!important}
+.table-zoom span{font-size:11px!important;min-width:38px!important;font-weight:850!important;color:var(--text,#26384d)!important}
+.table-zoom .zoom-btn{height:25px!important;min-height:25px!important;min-width:25px!important;width:25px!important;font-size:15px!important}
+.toolbar-grid label,.toolbar-grid .field{font-size:11px!important;font-weight:750!important;line-height:1.2!important}
+.toolbar-grid label{letter-spacing:0!important}
+@media(max-width:1050px){.table-head{flex-wrap:wrap!important}.head-actions{flex-wrap:wrap!important}}
+:root[data-eta-theme=noche] #etaIngresoSummary{background:#152337!important;color:#e1ebf8!important;border-color:#304259!important}
+:root[data-eta-theme=noche] .table-zoom span{color:#e1ebf8!important}
+:root[data-eta-theme=retro] #etaIngresoSummary{border-radius:0!important}
+
+/* V23.2 — Barra operativa consistente e Ingreso ETA desplegable */
+.table-head .head-actions{display:flex!important;align-items:center!important;gap:7px!important;flex-wrap:wrap!important}
+.table-head .head-actions>.eta-ingreso-details,
+.table-head .head-actions>#dailyStateDetails,
+.table-head .head-actions>.table-zoom,
+.table-head .head-actions>.column-chooser,
+.table-head .head-actions>.btn,
+.table-head .head-actions>.eta-ingreso-reset{flex:0 0 auto}
+.table-head .head-actions .btn.small,
+.table-head .head-actions .column-chooser>summary,
+.table-head .head-actions #dailyStateDetails>summary,
+.table-head .head-actions #etaIngresoSummary,
+.table-head .head-actions .table-zoom,
+.table-head .head-actions .eta-ingreso-reset{
+ height:33px!important;min-height:33px!important;box-sizing:border-box!important;
+ border-radius:7px!important;border:1px solid var(--line,#ccd7e5)!important;
+ font-size:11px!important;font-weight:800!important;line-height:1.2!important;
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ padding:0 12px!important;margin:0!important;white-space:nowrap!important;
+}
+.table-head .head-actions #etaIngresoSummary,.table-head .head-actions #dailyStateDetails>summary{padding-right:27px!important}
+.table-head .head-actions .table-zoom{gap:7px!important;padding:2px 6px!important}
+.table-head .head-actions .table-zoom .zoom-btn{height:27px!important;min-height:27px!important;min-width:27px!important;font-size:15px!important}
+.table-head .head-actions .table-zoom #tableZoomLabel{font-size:11px!important;min-width:38px!important}
+.table-head .head-actions #btnExportTasks,.table-head .head-actions #btnExportExcel{font-size:11px!important}
+.eta-ingreso-details{position:relative;z-index:230}
+.eta-ingreso-details>summary{list-style:none;cursor:pointer;background:var(--card,#fff);color:var(--text,#25364c)}
+.eta-ingreso-details>summary::-webkit-details-marker{display:none}
+.eta-ingreso-details>summary::after{content:'▾';position:absolute;right:10px;font-size:10px;color:#64748b}
+.eta-ingreso-details[open]>summary::after{content:'▴'}
+.eta-ingreso-details.is-active>summary{border-color:#4380c9!important;box-shadow:0 0 0 1px #4380c930}
+.eta-ingreso-menu{position:absolute;z-index:450;top:calc(100% + 7px);left:0;min-width:245px;max-width:90vw;padding:12px;display:grid;gap:8px;background:var(--card,#fff);border:1px solid var(--line,#d0daea);border-radius:10px;box-shadow:0 16px 35px #0f172a30;color:var(--text,#1c3046)}
+.eta-ingreso-menu p{margin:0 0 3px;font-size:12px;font-weight:800}
+.eta-ingreso-menu button{min-height:34px;border:1px solid var(--line,#cbd5e1);background:transparent;color:inherit;border-radius:7px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;text-align:left;font-size:12px;font-weight:750;cursor:pointer}
+.eta-ingreso-menu button:hover,.eta-ingreso-menu button.selected{background:#eaf2fc;color:#173c73;border-color:#98bcf2}
+.eta-ingreso-menu strong{font-variant-numeric:tabular-nums;font-size:13px}
+.table-head .head-actions .eta-ingreso-reset{background:#eaf2fc;color:#174a8a;border-color:#a6c3eb!important;cursor:pointer}
+:root[data-eta-theme=noche] .eta-ingreso-menu{background:#152337;color:#e1ebf8;border-color:#304259}
+:root[data-eta-theme=noche] .eta-ingreso-menu button:hover,:root[data-eta-theme=noche] .eta-ingreso-menu button.selected{background:#274565;color:#f4f9ff}
+:root[data-eta-theme=noche] .table-head .head-actions .eta-ingreso-reset{background:#274565;color:#c8ddfc;border-color:#4b7095!important}
+:root[data-eta-theme=retro] .eta-ingreso-menu{border-radius:0}
+@media(max-width:1000px){.table-head .head-actions{justify-content:flex-start!important}}
+
+/* V23.3 — Cabecera contenida y acción MIRA5 alineada en todos los temas. */
+.topbar{
+  display:flex!important;align-items:center!important;
+  box-sizing:border-box!important;
+  height:42px!important;min-height:42px!important;
+  max-height:42px!important;padding:4px 9px!important;
+  gap:10px!important;width:100%!important;
+}
+.topbar .top-left{min-width:0;flex:0 0 auto;display:flex;align-items:center;max-height:100%}
+.topbar .top-actions{min-width:0;flex:1 1 auto;display:flex!important;align-items:center!important;justify-content:flex-end!important;max-height:100%;overflow:hidden;gap:0!important}
+.topbar .top-actions>*{max-height:100%;min-width:0;align-self:center}
+.topbar #btnMiraImport{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  flex:0 0 auto!important;align-self:center!important;
+  height:28px!important;min-height:28px!important;max-height:28px!important;
+  box-sizing:border-box!important;padding:0 9px!important;margin:0 5px!important;
+  line-height:1!important;font-size:12px!important;font-weight:750!important;
+  border-radius:5px!important;white-space:nowrap!important;
+  vertical-align:middle!important;
+}
+.topbar .top-actions .sync-slot{flex:0 1 auto!important;max-width:30vw!important;overflow:hidden}
+.topbar .top-actions .sync-slot #loadStatus,
+.topbar .top-actions .sync-slot #lastUpdate{max-width:100%!important;overflow:hidden;text-overflow:ellipsis}
+.topbar #miraLastQuery{flex:0 1 auto!important;max-width:185px!important;overflow:hidden;text-overflow:ellipsis}
+.topbar .top-icon-btn{flex:0 0 auto!important;height:28px!important;width:28px!important;min-height:28px!important;max-height:28px!important}
+@media(max-width:1100px){
+ .topbar .top-actions .sync-slot:first-child{max-width:26vw!important}
+ .topbar #miraLastQuery{max-width:110px!important}
+}
+@media(max-width:850px){
+ .topbar #miraLastQuery,.topbar .top-actions .sync-slot:last-of-type{display:none!important}
+ .topbar #btnMiraImport{font-size:11px!important;padding:0 6px!important}
+}
+@media(max-width:560px){
+ .topbar .top-actions .sync-slot{display:none!important}
+ .topbar .brand h1{font-size:13px!important}
+ .topbar #btnMiraImport{font-size:10px!important}
+}
