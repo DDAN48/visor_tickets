@@ -17,44 +17,15 @@
     ['subcapa','Subcapa'],['origin','Origen'],['event','Evento'],['parentEvent','Padre'],['ageDays','Antigüedad'],['eventAgeDays','Antigüedad Evento'],['contractor','Contratista'],['scheduled','Agendado'],
     ['tipificacion','Tipificación tarea'],['capa','Capa'],['eventSigla','Sigla Evento'],['startTime','Start Time'],['endTime','End Time'],['tech','Técnico / móvil'],['resource','ID Recurso'],['tree','Árbol']
   ];
+  // Únicamente las métricas que exporta MIRA5 en la planilla simplificada.
   const MIRA_FIELDS = [
     ['mira_total','Total CM','cmStatus.cmTot'],
     ['mira_up','CM Up %','cmStatus.cmUpPercent'],
-    ['mira_tecnologia','Tecnología MIRA','equipo.equipoTipo.nombre'],
-    ['mira_hub','Hub MIRA','hub'],
     ['mira_ofdma','OFDMA %','cmPartialService.ofdmaPercent'],
-    ['mira_qam','SC-QAM %','cmPartialService.qamPercent'],
-    ['mira_loss','Packet Loss','cmIcmp.ploss'],
-    ['mira_lossPct','CM Packet Loss %','cmIcmp.porcCmPloss'],
-    ['mira_inMbps','Tráfico entrada Mbps','cmTrafico.inMbps'],
-    ['mira_outMbps','Tráfico salida Mbps','cmTrafico.outMbps'],
-    ['mira_pDs','Potencia DS','cmPwr.pwrDs'],
-    ['mira_pUs','Potencia US','cmPwr.pwrUs'],
-    ['mira_pRx','Potencia US Rx','cmPwr.pwrUsRx'],
-    ['mira_sDs','SNR DS','cmSnr.snrDs'],
-    ['mira_sUs','SNR US','cmSnr.snrUs'],
-    ['mira_fdPre','FEC DS Pre','cmFecDs.dsFecPre'],
-    ['mira_fdPrePct','FEC DS Pre %','cmFecDs.porcCmFecPre'],
-    ['mira_fdPost','FEC DS Post','cmFecDs.dsFecPost'],
-    ['mira_fdPostPct','FEC DS Post %','cmFecDs.porcCmFecPost'],
-    ['mira_fuPre','FEC US Pre','cmFecUs.usFecPre'],
-    ['mira_fuPrePct','FEC US Pre %','cmFecUs.porcCmFecPre'],
-    ['mira_fuPost','FEC US Post','cmFecUs.usFecPost'],
-    ['mira_fuPostPct','FEC US Post %','cmFecUs.porcCmFecPost'],
-    ['mira_fdoPre','FEC DS OFDM Pre','cmFecDsOfdm.dsFecPre'],
-    ['mira_fdoPrePct','FEC DS OFDM Pre %','cmFecDsOfdm.porcCmFecPre'],
-    ['mira_fdoPost','FEC DS OFDM Post','cmFecDsOfdm.dsFecPost'],
-    ['mira_fdoPostPct','FEC DS OFDM Post %','cmFecDsOfdm.porcCmFecPost'],
-    ['mira_fuoPre','FEC US OFDM Pre','cmFecUsOfdm.usFecPre'],
-    ['mira_fuoPrePct','FEC US OFDM Pre %','cmFecUsOfdm.porcCmFecPre'],
-    ['mira_fuoPost','FEC US OFDM Post','cmFecUsOfdm.usFecPost'],
-    ['mira_fuoPostPct','FEC US OFDM Post %','cmFecUsOfdm.porcCmFecPost'],
-    ['mira_nDs','Frecuencias DS','cmFrecuencias.nDs'],
-    ['mira_nUs','Frecuencias US','cmFrecuencias.nUs'],
-    ['mira_d20','DOCSIS 2.0','cmCant.cantD20'],
-    ['mira_d30','DOCSIS 3.0','cmCant.cantD30'],
-    ['mira_d31','DOCSIS 3.1','cmCant.cantD31'],
-    ['mira_pnm','PNM PH','cmPnm.eqPh']
+    ['mira_tecnologia','Tecnología MIRA','equipo.equipoTipo.nombre'],
+    ['mira_nodo_cmts','NodoCmts MIRA','nodoCmts'],
+    ['mira_tipo','Tipo Nodo MIRA','tipoNodo'],
+    ['mira_cmts','CMTS MIRA','cmts']
   ];
   COLUMN_DEFS.push(...MIRA_FIELDS.filter(([k])=>!COLUMN_DEFS.some(([existing])=>existing===k)).map(([k,label])=>[k,label]));
   const INITIAL_VISIBLE_COLUMNS = new Set(['task','created','affected','priority','node','mira_up','mira_total','tipif','status','subcapa','origin','event','parentEvent','ageDays','eventAgeDays','contractor','scheduled']);
@@ -750,12 +721,13 @@
     purple:{label:'Violeta',hex:'#eadcff'},
     violet:{label:'Lila',hex:'#ece7ff'}
   };
-  const COLOR_FILTERABLE_KEYS=new Set(['created','affected','node','tipif','status','subcapa','origin','parentEvent','ageDays','eventAgeDays','capa']);
+  const COLOR_FILTERABLE_KEYS=new Set(['created','affected','node','tipif','status','subcapa','origin','parentEvent','ageDays','eventAgeDays','capa','mira_up']);
 
   function classToColorKey(cls){
     return ({edificio:'blue',fibra:'yellow',infra:'pink',usac:'green',ingress:'purple',leak:'purple'})[cls]||'white';
   }
   function columnColorKey(r,key,dups=null){
+    if(key==='mira_up'){const v=miraUpRaw(r);return v===null?'white':v<80?'red':'white';}
     if(key==='created'){
       const c=createdClass(r);return c==='created-green'?'green':c==='created-yellow'?'yellow':c==='created-old'?'salmon':'white';
     }
@@ -943,11 +915,10 @@
   function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=duplicateSets(state.filtered);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:k==='eventAgeDays'?`age-cell ${eventAgeClass(eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='subcapa'?`subcapa-cell ${subcapaClass(subcapa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=e=>{const btn=e.target.closest('[data-mira-node]');if(btn){showMiraPopup(btn.dataset.miraNode);return;}openTaskDrawer(tr.dataset.task)});requestAnimationFrame(updateTableHorizontalScroller);scheduleMiraScan();}
 
   function cellHtml(r,k){if(k.startsWith('mira_')){
+    const lowUp=k==='mira_up'&&miraUpRaw(r)!==null&&miraUpRaw(r)<80;
     const val=miraValue(r,k);
     // Umbral estricto: 79,99% es rojo/rosa; 80% exacto no se resalta.
     // Conservar el valor original para evaluar el umbral sin depender de formato local.
-    const raw=k==='mira_up'?String(val).replace(/\./g,'').replace(',','.'):'';
-    const lowUp=k==='mira_up'&&val!==''&&Number.isFinite(Number(raw))&&Number(raw)<80;
     return `<button type="button" class="mira-click${lowUp?' mira-up-low':''}" data-mira-node="${esc(node(r))}" title="Ver estadísticas MIRA5 · activar VPN">${esc(val===''?'—':val)}</button>`;
   }if(k==='task')return`<span class="task-link">${esc(taskId(r))}</span>`;if(k==='status')return badgeStatus(r.Estado||r.status);if(k==='affected')return affected(r)?`<span class="badge ${/^SI$/i.test(affected(r))?'warn':'ok'}">${esc(affected(r))}</span>`:'—';return esc(fmt(rowValueByColumn(r,k)));}
 
@@ -1721,17 +1692,26 @@
   // MIRA5 - consultas independientes: nunca bloquean carga OFS
   const miraKeys = MIRA_FIELDS.map(x=>x[0]);
   const miraSettingsKey = 'ofsc_mira_popup_v2251';
-  try{const stored=JSON.parse(localStorage.getItem(miraSettingsKey)||'null');mira.selected=new Set(Array.isArray(stored)?stored:['mira_total','mira_up','mira_ofdma','mira_lossPct','mira_pDs','mira_sUs','mira_fdPostPct']);}catch{mira.selected=new Set(['mira_total','mira_up']);}
+  try{const stored=JSON.parse(localStorage.getItem(miraSettingsKey)||'null');mira.selected=new Set((Array.isArray(stored)?stored:['mira_total','mira_up','mira_ofdma','mira_tecnologia']).filter(k=>miraKeys.includes(k)));}catch{mira.selected=new Set(['mira_total','mira_up']);}
   const mPath=(r,path)=>path.split('.').reduce((x,k)=>x?.[k],r);
   const mNodes=()=>[...new Set(state.filtered.slice((state.page-1)*PAGE_SIZE,state.page*PAGE_SIZE).map(node).map(upper).filter(Boolean))];
   function mMatch(n,r){return upper(r.nodo||r.nodoCmts).startsWith(n)||upper(r.nodoCmts).startsWith(n);}
+  // Evaluar el umbral con el porcentaje original, antes de redondear el valor visible.
+  function miraUpRaw(r){
+    const n=upper(node(r));if(!n)return null;
+    const arr=miraLookup(n,'statsNodosCmts');
+    const nums=arr.map(x=>({v:Number(x.cmStatus?.cmUpPercent),w:Number(x.cmStatus?.cmTot)||0,raw:x.cmStatus?.cmUpPercent})).filter(x=>x.raw!==null&&x.raw!==undefined&&x.raw!==''&&Number.isFinite(x.v));
+    if(!nums.length)return null;
+    const weights=nums.reduce((a,x)=>a+x.w,0);
+    return weights>0?nums.reduce((a,x)=>a+x.v*x.w,0)/weights:nums.reduce((a,x)=>a+x.v,0)/nums.length;
+  }
   function miraValue(r,k){
     const n=upper(node(r));if(!n)return'';
-    const arr=miraLookup(n,k==='mira_total'||k==='mira_up'?'statsNodosCmts':'statsNodos');
+    const arr=miraLookup(n,'statsNodosCmts');
     if(!arr.length)return'';
     const field=MIRA_FIELDS.find(f=>f[0]===k);if(!field)return'';
     // Tecnología y Hub son texto. Mostrar valores únicos, sin promediar ni convertir a número.
-    if(k==='mira_tecnologia'||k==='mira_hub'){
+    if(['mira_tecnologia','mira_nodo_cmts','mira_tipo','mira_cmts'].includes(k)){
       const values=[...new Set(arr.map(x=>mPath(x,field[2])).filter(x=>x!==null&&x!==undefined&&String(x).trim()!=='').map(x=>String(x).trim()))];
       return values.join(' / ');
     }
@@ -1775,7 +1755,7 @@
   function scheduleMiraScan(){ /* manual: jamás abrir peticiones automáticas a MIRA5 */ }
   async function refreshMira(){miraSyncStatus();renderMiraCells();}
   // Exportación ORIGINAL provista por el usuario. No agregar filtros: no está comprobado que export los admita.
-  const MIRA_EXPORT_FIELDS=[['_id','id','text'],['nodoCmts','Link','text'],['nodoCmts','NodoCmts','text'],['nodo','Nodo','text'],['tipoNodo','Tipo Nodo','text'],['cmts','Cmts','text'],['cmStatus.cmTot','Total','int'],['cmStatus.cmUpPercent','Up%','int'],['cmStatus.cmTot','Total','int'],['cmPartialService.ofdmaPercent','OFDMA','int']];
+  const MIRA_EXPORT_FIELDS=[['_id','id','text'],['nodoCmts','Link','text'],['nodoCmts','NodoCmts','text'],['nodo','Nodo','text'],['tipoNodo','Tipo Nodo','text'],['cmts','Cmts','text'],['cmStatus.cmTot','Total','int'],['cmStatus.cmUpPercent','Up%','int'],['cmStatus.cmTot','Total','int'],['cmPartialService.ofdmaPercent','OFDMA','int'],['equipo.equipoTipo.nombre','Tecnologia','text']];
   function miraExportUrl(){
     const params=new URLSearchParams({coll:'statsNodosCmts',model:JSON.stringify(MIRA_EXPORT_FIELDS.map(([name,label,formatter])=>({name,label,formatter})))});
     // PHP original utiliza la presencia del parámetro export sin valor.
@@ -1829,7 +1809,7 @@
       if(!header){
         const heads=Object.entries(cells);const lookup=(...names)=>heads.find(([k,v])=>names.map(norm).includes(norm(v)))?.[0];
         const n=lookup('Nodo'),nc=lookup('NodoCmts','Nodo Cmts'),total=lookup('Total','Total CM'),up=lookup('Up%','Up %','CM Up %');
-        if(n!==undefined&&total!==undefined&&up!==undefined){header={n,nc,total,up,cmts:lookup('Cmts'),tipo:lookup('Tipo Nodo'),ofdma:lookup('OFDMA','OFDMA%')};}
+        if(n!==undefined&&total!==undefined&&up!==undefined){header={n,nc,total,up,cmts:lookup('Cmts'),tipo:lookup('Tipo Nodo'),ofdma:lookup('OFDMA','OFDMA%'),tecnologia:lookup('Tecnologia','Tecnología','Equipo','Tecnologia MIRA')};}
         continue;
       }
       const value=k=>k===undefined?'':String(cells[k]??'').trim();
@@ -1837,7 +1817,7 @@
       if(!nodo&&!nc)continue;
       const total=numeric(value(header.total)),up=numeric(value(header.up));
       if(!Number.isFinite(total)||!Number.isFinite(up)){skipped++;continue;}
-      parsed.push({nodo,nodoCmts:nc,cmts:value(header.cmts),tipoNodo:value(header.tipo),cmStatus:{cmTot:total,cmUpPercent:up},cmPartialService:{ofdmaPercent:numeric(value(header.ofdma))}});
+      parsed.push({nodo,nodoCmts:nc,cmts:value(header.cmts),tipoNodo:value(header.tipo),cmStatus:{cmTot:total,cmUpPercent:up},cmPartialService:{ofdmaPercent:numeric(value(header.ofdma))},equipo:{equipoTipo:{nombre:value(header.tecnologia)}}});
       processed++;
       if(processed%2000===0)await progress('Procesando archivo… '+processed.toLocaleString('es-AR')+' registros leídos');
     }
@@ -1885,8 +1865,8 @@
   miraRestore();
   function setMiraStatus(s){const el=$('#miraLastQuery');if(el)el.textContent=s;}
   function renderMiraCells(){document.querySelectorAll('#opTbody tr[data-task]').forEach(tr=>{const r=state.filtered.find(x=>taskId(x)===tr.dataset.task);if(!r)return;tr.querySelectorAll('[data-column^="mira_"]').forEach(td=>{const key=td.dataset.column;td.innerHTML=cellHtml(r,key);});});}
-  function showMiraPopup(n){const modal=$('#miraModal');const title=$('#miraPopupTitle'),body=$('#miraPopupBody');title.textContent='MIRA5 · '+n;const lookup=miraLookup(upper(n),'statsNodos');const summary=miraLookup(upper(n),'statsNodosCmts');const metric=(k)=>{const r={Nodo:n};return miraValue(r,k) || (miraValue(r,k)===0?'0':'—');};
-    body.innerHTML=`<p class="mira-vpn">Para ver valores o estado del nodo, recordá activar la VPN.</p><div class="mira-popup-grid">${MIRA_FIELDS.filter(([k])=>mira.selected.has(k)).map(([k,l])=>`<div><small>${esc(l)}</small><strong>${esc(metric(k))}</strong></div>`).join('')}</div><p class="muted">${summary.length} registros Nodo/CMTS · ${lookup.length} registros de estadísticas completas. Los indicadores múltiples son promedios ponderados por total CM (excepto Total CM). No suman porcentajes ni errores entre frecuencias.</p>`;modal.classList.remove('hidden');}
+  function showMiraPopup(n){const modal=$('#miraModal');const title=$('#miraPopupTitle'),body=$('#miraPopupBody');title.textContent='MIRA5 · '+n;const summary=miraLookup(upper(n),'statsNodosCmts');const metric=(k)=>{const r={Nodo:n};return miraValue(r,k) || (miraValue(r,k)===0?'0':'—');};
+    body.innerHTML=`<p class="mira-vpn">Para ver valores o estado del nodo, recordá activar la VPN.</p><div class="mira-popup-grid">${MIRA_FIELDS.filter(([k])=>mira.selected.has(k)).map(([k,l])=>`<div><small>${esc(l)}</small><strong>${esc(metric(k))}</strong></div>`).join('')}</div><p class="muted">${summary.length} registros Nodo/CMTS importados desde Excel. Total CM se suma; CM Up % se calcula ponderando por cantidad de CM.</p>`;modal.classList.remove('hidden');}
   function showMiraSettings(){const p=$('#miraSettingsBody');p.innerHTML=MIRA_FIELDS.map(([k,l])=>`<label><input type="checkbox" value="${k}" ${mira.selected.has(k)?'checked':''}> ${esc(l)}</label>`).join('');p.querySelectorAll('input').forEach(el=>el.onchange=()=>{el.checked?mira.selected.add(el.value):mira.selected.delete(el.value);localStorage.setItem(miraSettingsKey,JSON.stringify([...mira.selected]));});$('#miraSettingsModal').classList.remove('hidden');}
   $('#miraPopupClose').onclick=()=>$('#miraModal').classList.add('hidden');$('#miraSettingsClose').onclick=()=>$('#miraSettingsModal').classList.add('hidden');$('#miraGear').onclick=showMiraSettings;
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#miraModal').classList.add('hidden');$('#miraSettingsModal').classList.add('hidden');$('#miraImportModal').classList.add('hidden');}});
@@ -1894,5 +1874,4 @@
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
-
 
