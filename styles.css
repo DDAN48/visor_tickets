@@ -1265,3 +1265,8 @@ main{padding:10px 12px;max-width:none}.sticky-dashboard{position:sticky;top:58px
 #miraImportFeedback{white-space:pre-wrap}
 @media(max-width:650px){.mira-import-controls{grid-template-columns:1fr}}
 
+
+/* Detalle independiente de los campos de cada intervención OFSC */
+.intervention-field-label{font-size:10px;font-weight:850;color:#465b73;margin-bottom:5px}
+.intervention-reason{margin-top:7px;padding:8px 9px;border:1px solid #cadcee;border-radius:6px;background:#eef5fc;font-size:11px;overflow-wrap:anywhere}
+
