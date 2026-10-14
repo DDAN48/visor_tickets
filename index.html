@@ -103,7 +103,7 @@
 <div id="miraImportModal" class="mira-dialog hidden"><div class="mira-dialog-card mira-import-card"><div class="mira-dialog-head"><strong>Actualizar MIRA5 · Excel</strong><button id="miraImportClose" class="btn ghost small" type="button">Cerrar ×</button></div>
 <p class="mira-vpn">1. Con la VPN activa, pulsá <strong>Descargar Excel</strong>: MIRA5 enviará el archivo a las descargas de Chrome. 2. Pulsá <strong>Actualizar</strong> y elegí el archivo recién descargado. No hace falta seleccionar ni autorizar carpetas.</p>
 <div class="mira-import-actions"><button id="miraImportDownload" class="btn primary" type="button">Descargar Excel</button><button id="miraImportUpdate" class="btn" type="button">Actualizar</button></div>
-<p class="muted" id="miraImportFeedback" aria-live="polite">Descargá el Excel de MIRA5. Después elegilo con Actualizar para cargar sus datos.</p>
+<p class="muted" id="miraImportFeedback" aria-live="polite">Descargá el Excel de MIRA5 y elegilo con Actualizar. Debe contener Nodo, Total, Up%, OFDMA y, para completar Tecnología, la columna Tecnologia.</p>
 <input type="file" id="miraImportFallback" accept=".xlsx" hidden>
 </div></div>
 <div id="miraModal" class="mira-dialog hidden"><div class="mira-dialog-card"><div class="mira-dialog-head"><strong id="miraPopupTitle">MIRA5</strong><div><button id="miraGear" class="btn ghost small" type="button" title="Configurar indicadores">⚙ Configurar</button><button id="miraPopupClose" class="btn ghost small" type="button">Cerrar ×</button></div></div><div id="miraPopupBody"></div></div></div>
@@ -111,8 +111,7 @@
 <div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite"><div class="loading-card"><div class="spinner"></div><strong id="loadingTitle">Cargando información…</strong><span id="loadingDetail">Preparando operativo</span><div class="progress"><div id="loadingBar" class="progress-bar"></div></div></div></div>
 <div id="toast" class="toast hidden"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="config.js?v=22.51"></script><script src="app.js?v=22.59"></script>
+<script src="config.js?v=22.51"></script><script src="app.js?v=22.60"></script>
 </body>
 </html>
-
 
