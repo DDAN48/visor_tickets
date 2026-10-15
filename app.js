@@ -51,7 +51,20 @@
   const fmt=v=>(v===null||v===undefined||v==='')?'—':String(v);
   const parseDate=v=>{ if(!v)return null; const raw=String(v).trim(); const d=new Date(raw.includes('T')?raw:raw.replace(' ','T')); return Number.isNaN(d.getTime())?null:d; };
   const formatDate=v=>{const d=parseDate(v);return d?d.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}):fmt(v)};
-  const formatDateOnly=v=>{const d=parseDate(v);return d?d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}):fmt(v)};
+  // Fechas operativas son días de calendario (YYYY-MM-DD), no instantes UTC.
+  // Evita que 2026-10-15T00:00:00Z se muestre como 14/10 en Argentina.
+  const formatDateOnly=v=>{
+    const raw=norm(v);
+    const m=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|\s|$)/);
+    if(m){
+      const y=Number(m[1]),mo=Number(m[2]),day=Number(m[3]);
+      const valid=new Date(Date.UTC(y,mo-1,day));
+      if(valid.getUTCFullYear()===y&&valid.getUTCMonth()===mo-1&&valid.getUTCDate()===day)
+        return `${m[3]}/${m[2]}/${m[1]}`;
+    }
+    const d=parseDate(v);
+    return d?d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}):fmt(v);
+  };
   const formatLongDateTime=v=>{const d=parseDate(v);return d?d.toLocaleString('es-AR',{weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}):fmt(v)};
   const showToast=(m,ms=4200)=>{const t=$('#toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(showToast._t);showToast._t=setTimeout(()=>t.classList.add('hidden'),ms)};
   function cloneDefaults(){return {contractors:[...DEFAULT_EXCLUSIONS.contractors],eventSiglas:[...DEFAULT_EXCLUSIONS.eventSiglas],taskSiglas:[...DEFAULT_EXCLUSIONS.taskSiglas],statuses:[...DEFAULT_EXCLUSIONS.statuses]};}
