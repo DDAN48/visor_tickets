@@ -15,7 +15,7 @@
   const COLUMN_DEFS = [
     ['task','Tarea'],['created','Creado'],['affected','Afectación'],['mira_up','CM Up %'],['priority','Prioridad'],['node','Nodo'],['tipif','Tipif'],['status','Estado'],
     ['subcapa','Subcapa'],['origin','Origen'],['event','Evento'],['parentEvent','Evento padre'],['parentAgeDays','Antigüedad padre'],['ageDays','Antigüedad tarea (días)'],['eventAgeDays','Antigüedad evento (días)'],['contractor','Contratista'],['scheduled','Agendado'],
-    ['tipificacion','Tipificación tarea'],['capa','Capa'],['eventSigla','Sigla Evento'],['startTime','Start Time'],['endTime','End Time'],['tech','Técnico / móvil'],['resource','ID Recurso'],['tree','Árbol']
+    ['tipificacion','Tipificación tarea'],['capa','Capa'],['eventSigla','Sigla Evento'],['startTime','Start Time'],['endTime','End Time'],['tech','Técnico / móvil'],['resource','ID Recurso'],['tree','Árbol'],['suspensiones','Veces suspendida']
   ];
   // Únicamente las métricas que exporta MIRA5 en la planilla simplificada.
   const MIRA_FIELDS = [
@@ -145,6 +145,23 @@
     })[0];
   }
 
+  // Regla operativa: una actividad asignada para una fecha POSTERIOR a hoy
+  // se muestra AGENDADA. El estado OFSC y el registro crudo quedan intactos.
+  // No aplica a terminales, iniciadas, suspendidas ni enrutadas.
+  function operationalStatusForFutureAssignment(r){
+    if(statusKey(r.Estado||r.status)!=='assigned')return r;
+    const ymd=v=>{
+      const raw=norm(v);
+      const match=raw.match(/^(\d{4}-\d{2}-\d{2})(?:T|\s|$)/);
+      if(match)return match[1];
+      const d=parseDate(v);
+      return d?localYmd(d):'';
+    };
+    const when=ymd(r.FechaEfectiva)||ymd(r.Agendado)||ymd(r.date);
+    if(!when||when<=localYmd(new Date()))return r;
+    return {...r,EstadoOriginalOFSC:r.Estado,statusOriginalOFSC:r.status,Estado:'AGENDADA',status:'scheduled'};
+  }
+
   function currentSnapshot(rows){
     const grouped=new Map();
     for(const r of rows){
@@ -169,7 +186,7 @@
         out.push(terminalRows[0]);
         continue;
       }
-      out.push(chooseNewest(taskRows));
+      out.push(operationalStatusForFutureAssignment(chooseNewest(taskRows)));
     }
     return out.filter(Boolean);
   }
@@ -224,7 +241,7 @@
   function operationalRange(){
     const now=new Date();
     return {
-      from:localYmd(shiftLocalDays(now,-7)),
+      from:localYmd(shiftLocalDays(now,-3)),
       to:localYmd(shiftLocalDays(now,30))
     };
   }
@@ -255,7 +272,7 @@
   function ensureOperationalDates(){
     const r=operationalRange();
     const label=$('#opWindowLabel');
-    if(label)label.textContent=`${r.from} → ${r.to}  (fijo: -7 / +30 días)`;
+    if(label)label.textContent=`${r.from} → ${r.to}  (fijo: -3 / +30 días)`;
     return r;
   }
 
@@ -290,6 +307,7 @@
     const u=new URL(C.OPERATIVO_URL);
     u.searchParams.set('all','1');
     u.searchParams.set('compact','1');
+    u.searchParams.set('sin_notas','1');
     if(from)u.searchParams.set('from',from);
     if(to)u.searchParams.set('to',to);
     if(forceRefresh)u.searchParams.set('refresh','1');
@@ -301,6 +319,7 @@
     u.searchParams.set('page',page);
     u.searchParams.set('limit',C.OPERATIVO_FALLBACK_PAGE_SIZE||1000);
     u.searchParams.set('compact','1');
+    u.searchParams.set('sin_notas','1');
     if(from)u.searchParams.set('from',from);
     if(to)u.searchParams.set('to',to);
     if(forceRefresh)u.searchParams.set('refresh','1');
@@ -561,7 +580,7 @@
     $('#btnRefresh').disabled=true;
     const previous={raw:state.raw,current:state.current,filtered:state.filtered,meta:state.meta,loadedRange:{...state.loadedRange}};
     const fullRange=currentRange();
-    const segments=[...phaseOneOperationalRanges(),...backgroundFutureRanges()];
+    const segments=[{key:'operativo_completo',label:'Todos los árboles · -3/+30',...fullRange}];
     let merged=[];
     setLoading(true,'Cargando operativo completo…',`Preparando ${segments.length} segmentos`,1);
     try{
@@ -709,7 +728,7 @@
   }
 
   function rowSearchText(r){return [taskId(r),node(r),tech(r),parentEvent(r),eventCode(r),contractor(r),capa(r),subcapa(r),siglaTarea(r),r.AddressLine1,r.address].map(norm).join(' ').toLowerCase();}
-  function rowValueByColumn(r,key){if(key.startsWith('mira_'))return miraValue(r,key);switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'parentAgeDays':return parentAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);default:return'';}}
+  function rowValueByColumn(r,key){if(key.startsWith('mira_'))return miraValue(r,key);switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'parentAgeDays':return parentAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);case'suspensiones':return suspendedCount(r);default:return'';}}
   function buildColumnValueCache(){
     const rows=availableRows();state.columnValueCache={};
     for(const [key] of COLUMN_DEFS){
@@ -768,7 +787,7 @@
     panel.onclick=e=>e.stopPropagation();search.oninput=render;
     panel.querySelector('[data-a="close"]').onclick=e=>{e.stopPropagation();close();};
     panel.querySelector('[data-a="toggle"]').onclick=e=>{e.stopPropagation();const allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(allSelected)bag.clear();else allVals.forEach(v=>bag.add(v));syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();};
-    host._refresh=render;render();
+    host._refresh=render;btn.textContent=columnFilterLabel(key)+' ▾';
   }
   function applyFilters(){
     if(state.ingresoDayKey){
@@ -802,7 +821,44 @@
     if(state.sort.key){const {key,direction}=state.sort;const sortVal=r=>key==='created'?(parseDate(createdValue(r))?.getTime()||0):key==='scheduled'?(parseDate(scheduled(r))?.getTime()||0):rowValueByColumn(r,key);rows.sort((a,b)=>compare(sortVal(a),sortVal(b))*direction);}state.filtered=rows;state.page=1;renderAll();
   }
   function compare(a,b){const na=Number(a),nb=Number(b);if(Number.isFinite(na)&&Number.isFinite(nb))return na-nb;return String(a??'').localeCompare(String(b??''),'es',{numeric:true,sensitivity:'base'});}
-  function resetFilters(){state.ingresoDayKey=null;state.ingresoLabel=null;$('#opSearch').value='';state.textFilters={};$$('[data-text-col]').forEach(i=>i.value='');for(const k of ['Contratista','Arbol','Capa','SubCapa','Tipif'])state.topFilters[k]=new Set();state.topFilters.Estado=new Set(state.defaultLiveStatuses);state.colFilters={};state.columnSelections={status:new Set(state.defaultLiveStatuses)};state.columnColorSelections={};buildAllMultis();buildColumns();applyFilters();}
+  function resetFilters(){
+    // V23.5: limpieza O( filtros ) sin reconstruir miles de opciones de los menús.
+    // Mantener los Set originales: los listeners de los controles capturan su referencia.
+    state.ingresoDayKey=null;state.ingresoLabel=null;
+    $('#opSearch').value='';
+    Object.keys(state.textFilters).forEach(k=>delete state.textFilters[k]);
+    $$('[data-text-col]').forEach(i=>i.value='');
+    Object.values(state.topFilters).forEach(bag=>{if(bag instanceof Set)bag.clear();});
+    Object.values(state.colFilters).forEach(bag=>{if(bag instanceof Set)bag.clear();});
+    Object.values(state.columnSelections).forEach(bag=>{if(bag instanceof Set)bag.clear();});
+    for(const value of state.defaultLiveStatuses){
+      if(!(state.topFilters.Estado instanceof Set))state.topFilters.Estado=new Set();
+      if(!(state.columnSelections.status instanceof Set))state.columnSelections.status=new Set();
+      state.topFilters.Estado.add(value);
+      state.columnSelections.status.add(value);
+    }
+    Object.keys(state.columnColorSelections).forEach(k=>delete state.columnColorSelections[k]);
+    // Solo etiquetas: renderizar las listas y colores únicamente al abrir el menú.
+    document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));
+    document.querySelectorAll('[data-filter-key]').forEach(host=>{
+      const btn=host.querySelector('.excel-filter-btn');
+      if(btn)btn.textContent=columnFilterLabel(host.dataset.filterKey)+' ▾';
+    });
+    for(const [id,key,scope] of [
+      ['topEstado','Estado','top'],['topContratista','Contratista','top'],
+      ['topArbol','Arbol','top'],['topCapa','Capa','top'],
+      ['topSubCapa','SubCapa','top'],['topTipif','Tipif','top'],
+      ['colStatus','Estado','col'],['colContractor','Contratista','col'],
+      ['colAffected','Afectacion','col'],['colCapa','Capa','col'],
+      ['colSubcapa','SubCapa','col'],['colTipif','Tipif','col'],['colTree','Arbol','col']
+    ]){
+      const host=document.getElementById(id);
+      const btn=host?.querySelector('.multi > button');
+      if(btn)btn.textContent=selectedLabel(key,scope==='top'?state.topFilters[key]:state.colFilters[key]);
+    }
+    state.page=1;
+    applyFilters();
+  }
 
   function movementDate(r){
     for(const v of [endValue(r),startValue(r),r.FechaEfectiva,r.fecha_intervencion,r.FechaIntervencion,r.Agendado,r.date]){
@@ -1020,7 +1076,9 @@
     renderTaskDrawer(id,cur,[],{loading:true});
     try{
       const result=await fetchCombinedTaskHistory(id,cur);
-      renderTaskDrawer(id,cur,result.items,{error:result.error,sources:result.sources});
+      const enriched=result.items.find(r=>String(r.activityId||'')===String(cur.activityId||'') && (r.XA_Activity_Notes||r.closure_notes));
+      const currentWithNotes=enriched?{...cur,...enriched}:cur;
+      renderTaskDrawer(id,currentWithNotes,result.items,{error:result.error,sources:result.sources});
     }catch(e){
       console.error('Histórico OFSC',e);
       renderTaskDrawer(id,cur,[],{error:String(e?.message||e)});
@@ -1881,5 +1939,6 @@
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
+
 
 
