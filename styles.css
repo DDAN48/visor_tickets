@@ -1270,3 +1270,125 @@ main{padding:10px 12px;max-width:none}.sticky-dashboard{position:sticky;top:58px
 .intervention-field-label{font-size:10px;font-weight:850;color:#465b73;margin-bottom:5px}
 .intervention-reason{margin-top:7px;padding:8px 9px;border:1px solid #cadcee;border-radius:6px;background:#eef5fc;font-size:11px;overflow-wrap:anywhere}
 
+
+/* V23.8 — menús diarios, selector de color activo */
+.eta-completed-details .daily-state-body{width:250px;display:grid;gap:8px;padding:12px;max-width:min(90vw,300px)}
+.eta-completed-details .daily-state-body button{min-height:34px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--text);font-weight:750;display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer}
+.eta-daily-title{font-size:12px;font-weight:850;color:var(--text)}
+.eta-daily-menu .eta-daily-excel{background:#e7f4ec!important;color:#087b52!important;justify-content:center!important;border-color:#a7d9bf!important}
+.eta-daily-menu button.selected{background:#eaf2fc!important;color:#174a8a!important;border-color:#98bcf2!important}
+.excel-filter-btn.has-color-filter{box-shadow:inset 5px 0 0 var(--selected-filter-color);padding-left:10px!important;border-color:#6984b6!important}
+.task-link{cursor:pointer}#opTbody tr:not(:has(.task-link)) {cursor:default}
+:root[data-eta-theme=noche] .eta-completed-details .daily-state-body{background:#152337;color:#e1ebf8;border-color:#304259}
+
+.eta-daily-top{display:flex;align-items:center;justify-content:space-between;gap:9px}.eta-daily-top .eta-daily-excel{flex:0 0 auto;min-height:27px!important;padding:4px 9px!important;font-size:11px!important}
+
+/* V23.8.2 — Texto de notas destacado y banda de color 30% */
+.intervention-field-label{font-size:11px!important;font-weight:950!important;color:#000!important;text-transform:uppercase!important;letter-spacing:.035em!important;margin-bottom:6px!important}
+.excel-filter-btn.has-color-filter{background:linear-gradient(to right,var(--selected-filter-color) 0%,var(--selected-filter-color) 30%,var(--card,#fff) 30%,var(--card,#fff) 100%)!important;box-shadow:none!important;padding-left:8px!important;border-color:#6984b6!important}
+:root[data-eta-theme=noche] .excel-filter-btn.has-color-filter{color:#e1ebf8!important}
+
+:root[data-eta-theme=noche] .excel-filter-btn.has-color-filter{background:linear-gradient(to right,var(--selected-filter-color) 0%,var(--selected-filter-color) 30%,#182a40 30%,#182a40 100%)!important}
+
+/* V23.8.3: estado en el historial tan visible como los titulos de notas. */
+.drawer-panel .visit-top .badge,
+.drawer-panel.history-zoom-85 .visit-top .badge,
+.drawer-panel.history-zoom-115 .visit-top .badge,
+.drawer-panel.history-zoom-130 .visit-top .badge {
+  font-size:11px!important; font-weight:950!important; line-height:1.25!important;
+  min-height:25px!important; padding:5px 10px!important;
+  display:inline-flex!important; align-items:center!important; justify-content:center!important;
+  letter-spacing:.02em!important; border-radius:5px!important;
+}
+/* Todos (color) es un boton para limpiar el filtro, no una seleccion de casillas. */
+.excel-panel .color-filter-chip[data-color=""].active {
+  box-shadow:none!important; outline:0!important;
+}
+
+/* V23.8.4: gráfico interactivo de tipificaciones de ayer/hoy. */
+.eta-day-row{display:flex!important;align-items:stretch;gap:5px;min-width:0}
+.eta-daily-menu .eta-day-row>button:first-child{flex:1 1 auto;min-width:0}
+.eta-chart-trigger{flex:0 0 40px;display:flex;align-items:center;justify-content:center;min-height:34px;border:1px solid var(--line,#cbd5e1);border-radius:7px;background:#f4f8ff;color:#2853a2;cursor:pointer;padding:5px!important}
+.eta-chart-trigger svg{width:22px;height:22px;display:block}
+.eta-chart-trigger:hover{background:#e3edff;border-color:#729bd9}
+.eta-chart-modal{position:fixed;inset:0;z-index:10020;background:rgba(8,20,39,.64);display:flex;align-items:center;justify-content:center;padding:18px;overscroll-behavior:contain}
+body.eta-chart-open{overflow:hidden}
+.eta-chart-dialog{position:relative;width:min(1080px,96vw);max-height:90vh;overflow-y:auto;background:#fff;color:#182c45;border-radius:14px;box-shadow:0 18px 62px #0005;border:1px solid #d1dce9;padding:0;outline:0}
+.eta-chart-head{display:flex;align-items:start;justify-content:space-between;gap:14px;padding:17px 22px 12px;border-bottom:1px solid #e2e8f1}
+.eta-chart-head h2{font-size:18px;margin:0 0 4px;color:#142941}
+.eta-chart-head p{font-size:12px;color:#62768e;margin:0}
+.eta-chart-close{height:32px;width:32px;border-radius:7px;background:#edf2f8;border:1px solid #d4dfeb;color:#3b4f67;font-size:22px;cursor:pointer}
+.eta-chart-body{padding:22px 22px 14px;overflow-x:auto}
+.eta-chart-plot{min-height:350px;height:min(49vh,450px);display:flex;gap:10px;align-items:stretch;padding:8px 10px 0;border-bottom:2px solid #7b8899;background:repeating-linear-gradient(to top,transparent 0px,transparent calc(25% - 1px),#e9eef5 calc(25% - 1px),#e9eef5 25%)}
+.eta-chart-bar-item{position:relative;flex:1 1 0;min-width:68px;display:flex;flex-direction:column;align-items:center;justify-content:end;border:0;background:transparent;cursor:pointer;padding:0 2px;color:#273c58}
+.eta-chart-bar-track{position:relative;display:flex;align-items:end;justify-content:center;height:calc(100% - 58px);width:100%;padding-top:26px}
+.eta-chart-value{position:absolute;left:50%;bottom:calc(var(--eta-bar-height) + 6px);transform:translateX(-50%);font-size:12px;font-weight:900;line-height:1;margin:0;pointer-events:none;white-space:nowrap}
+.eta-chart-bar{width:min(78%,86px);min-height:3px;background:#4055d3;border-radius:5px 5px 0 0;transition:filter .15s ease}
+.eta-chart-bar-other{background:#8e7ad1}
+.eta-chart-bar-lii{background:#e8d57a}
+.eta-chart-bar-rip{background:#2f55bb}
+.eta-chart-bar-edf{background:#5364d6}
+.eta-chart-bar-vx{background:#5b6fe0}
+.eta-chart-bar-vao{background:#4b5fd0}
+.eta-chart-bar-item:hover .eta-chart-bar,.eta-chart-bar-item.selected .eta-chart-bar{filter:brightness(1.12);box-shadow:0 0 0 4px #4055d322}
+.eta-chart-category{height:52px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:normal;overflow-wrap:anywhere;text-align:center;font-size:10px;font-weight:800;padding-top:6px}
+.eta-chart-bar-item.selected .eta-chart-category{color:#2048bc}
+.eta-chart-item-fall .eta-chart-value{color:#a52f3c}.eta-chart-item-lii .eta-chart-value{color:#8e7011}.eta-chart-item-rip .eta-chart-value{color:#233e87}.eta-chart-item-other .eta-chart-value{color:#5f4aa8}
+.eta-chart-tooltip{margin:0 22px 14px;padding:11px 14px;background:#f4f7ff;border:1px solid #bbccef;border-radius:9px;display:flex;align-items:start;gap:12px;flex-wrap:wrap;font-size:12px}
+.eta-chart-tooltip strong{font-size:13px}.eta-chart-tooltip>span{font-weight:900;color:#253f99}.eta-chart-tooltip small{color:#65728a}
+.eta-chart-other-list{flex:0 0 100%;max-height:130px;overflow:auto;border-top:1px solid #d8e1f2;padding-top:7px;display:grid;grid-template-columns:1fr;row-gap:2px}
+.eta-chart-other-list>div{display:grid;grid-template-columns:max-content max-content;justify-content:start;column-gap:10px;align-items:center;padding:3px 0}
+.eta-chart-foot{font-size:11px;color:#65758e;padding:9px 22px 16px;border-top:1px solid #e8edf5}
+.eta-chart-empty{min-height:140px;display:grid;place-items:center;color:#718097}
+:root[data-eta-theme=noche] .eta-chart-trigger{background:#233b56;color:#d8e9ff;border-color:#45617f}
+@media(max-width:700px){.eta-chart-plot{gap:3px;min-width:690px;height:340px}.eta-chart-body{padding:10px}.eta-chart-dialog{max-height:94vh}.eta-chart-head{padding:12px}.eta-chart-bar-item{min-width:55px}}
+
+/* V23.8.5 — Caídas de red y edificio destacadas en gráfico. */
+.eta-chart-bar-fall{background:#cf4b55!important}
+.eta-chart-bar-item:has(.eta-chart-bar-fall) .eta-chart-value{color:#a52f3c;font-weight:950}
+
+/* V23.8.9 — Indicadores diarios: mismo texto, bordes diferenciados. */
+.table-head .head-actions #etaIngresoSummary,
+.table-head .head-actions #dailyStateDetails>summary{
+  font-family:inherit!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  letter-spacing:normal!important;
+  color:var(--text,#25364c)!important;
+  background:var(--card,#fff)!important;
+  border-style:solid!important;
+  border-width:2px!important;
+  box-shadow:none!important;
+}
+.table-head .head-actions #etaIngresoSummary{border-color:#3b82db!important}
+.table-head .head-actions #dailyStateDetails>summary{border-color:#31a36f!important}
+.eta-daily-menu .eta-day-row>button:first-child{
+  font-family:inherit!important;font-size:12px!important;font-weight:800!important;
+  color:var(--text,#25364c)!important;
+}
+.eta-daily-menu .eta-day-row>button:first-child strong{
+  font-family:inherit!important;font-size:12px!important;font-weight:800!important;
+  color:inherit!important;
+}
+.eta-daily-menu .eta-day-row>button:first-child.selected{
+  background:var(--card,#fff)!important;
+}
+#etaIngresoDetails .eta-day-row>button:first-child.selected{border:2px solid #3b82db!important}
+#dailyStateDetails .eta-day-row>button:first-child.selected{border:2px solid #31a36f!important}
+:root[data-eta-theme=noche] .table-head .head-actions #etaIngresoSummary,
+:root[data-eta-theme=noche] .table-head .head-actions #dailyStateDetails>summary{
+  background:#152337!important;color:#e1ebf8!important;
+}
+
+/* V23.8.10: solo acciones de Restablecer y Mapa, discretamente más grandes. */
+#btnClearFilters,#btnToggleMap{width:32px!important;height:32px!important;min-width:32px!important;min-height:32px!important;padding:4px!important}
+#btnClearFilters svg,#btnToggleMap svg{width:19px!important;height:19px!important}
+
+/* V23.8.11: una sola barra horizontal y KPI interactivos. */
+.table-scroll{overflow-x:hidden!important;overflow-y:auto!important}
+.kpi-strip button.kpi{font-family:inherit;text-align:left;cursor:pointer;color:inherit}
+.kpi-strip .kpi-selected{outline:2px solid #2667cb;outline-offset:-2px;box-shadow:0 0 0 2px #9ec6ff77;filter:saturate(1.12)}
+.kpi-strip button.kpi:hover{box-shadow:inset 0 0 0 1px #5276af88}
+.kpi-strip button.kpi:focus-visible{outline:3px solid #347bd4;outline-offset:1px}
+
+
