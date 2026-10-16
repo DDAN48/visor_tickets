@@ -38,10 +38,10 @@
   const savePreferences=()=>{try{localStorage.setItem(PREF_KEY,JSON.stringify({visibleColumns:COLUMN_DEFS.map(([k])=>k).filter(k=>!state.hiddenColumns.has(k)),tableZoom:state.tableZoom,historyZoom:state.historyZoom}));}catch(e){console.warn('No se pudo guardar preferencias',e)}};
   const mira = {summary:new Map(),full:new Map(), last:null, inFlight:false, timer:null, selected: new Set()};
   const state = {
-    tab:C.DEFAULT_TAB||'operativo', subtab:'tasks', raw:[], analyticsRaw:[], current:[], filtered:[], page:1, ingresoDayKey:null, ingresoLabel:null,
+    tab:C.DEFAULT_TAB||'operativo', subtab:'tasks', raw:[], analyticsRaw:[], current:[], filtered:[], page:1, ingresoDayKey:null, ingresoLabel:null, dailyCompletedDayKey:null,
     meta:{apiTotal:0,uniqueTotal:0}, filterValues:{}, topFilters:{}, colFilters:{}, textFilters:{},
     defaultLiveStatuses:new Set(), map:null, markers:null, histData:[], loading:false, hiddenColumns:new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>Array.isArray(savedPrefs.visibleColumns)?!savedPrefs.visibleColumns.includes(k):!INITIAL_VISIBLE_COLUMNS.has(k))),
-    exclusions:cloneDefaults(), sort:{key:'created',direction:1}, columnSelections:{}, columnColorSelections:{}, columnValueCache:{}, kpiValues:[],
+    exclusions:cloneDefaults(), sort:{key:'created',direction:1}, columnSelections:{}, columnColorSelections:{}, columnValueCache:{}, kpiValues:[], activeKpis:new Map(),
     loadedRange:{from:'',to:''}, analyticsRange:{from:'',to:''}, taskHistoryCache:new Map(), backgroundLoading:false, tableZoom:[80,90,100,110,120,130,140,150,160].includes(Number(savedPrefs.tableZoom))?Number(savedPrefs.tableZoom):90, historyZoom:[85,100,115,130].includes(Number(savedPrefs.historyZoom))?Number(savedPrefs.historyZoom):100
   };
 
@@ -86,7 +86,26 @@
   const parentEvent=r=>norm(r.EventoTableau||r.evento_tableau||r.EventoPadre||r.evento_padre)||oracleEvent(r);
   const eventCode=r=>oracleEvent(r)||parentEvent(r);
   const eventSigla=r=>norm(r.SiglaEvento||r.EventoSigla||(eventCode(r).match(/^\d{6}([A-Z]{2})/)||[])[1]);
-  const createdValue=r=>r.CreadoExacto||r.Creado||r.creado_exacto||'';
+  // Creado representa un día calendario cuando CreadoExacto está vacío.
+  // No interpretar YYYY-MM-DD como medianoche UTC: en Argentina resta 3 horas.
+  const createdValue=r=>r.CreadoExacto||r.creado_exacto||r.Creado||r.creado||'';
+  const createdDate=r=>{
+    const raw=String(createdValue(r)||'').trim();
+    const match=raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(match){
+      const y=Number(match[1]),m=Number(match[2]),day=Number(match[3]);
+      const d=new Date(y,m-1,day,12,0,0);
+      return d.getFullYear()===y&&d.getMonth()===m-1&&d.getDate()===day?d:null;
+    }
+    return parseDate(raw);
+  };
+  const createdDisplay=r=>{
+    const exact=String(r.CreadoExacto||r.creado_exacto||'').trim();
+    if(exact)return formatDate(exact);
+    const raw=String(r.Creado||r.creado||'').trim();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return formatDateOnly(raw);
+    return formatDate(raw);
+  };
   const startValue=r=>r.StartTime||r.startTime||r.start_time||'';
   const endValue=r=>r.EndTime||r.endTime||r.end_time||'';
   const interventionTimestamp=r=>{for(const v of [endValue(r),startValue(r),r.FechaEfectiva,r.fecha_intervencion,r.FechaIntervencion,r.Agendado,r.date]){const d=parseDate(v);if(d)return d.getTime();}return 0;};
@@ -117,7 +136,7 @@
   const todayCalendarUtc=()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const m=Object.fromEntries(parts.map(p=>[p.type,p.value]));return Date.UTC(Number(m.year),Number(m.month)-1,Number(m.day));};
   const dateAgeDays=d=>{if(!d||Number.isNaN(d.getTime()))return null;const then=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());return Math.max(0,Math.round((todayCalendarUtc()-then)/86400000));};
   const ticketDateFromCode=code=>{const m=norm(code).match(/^(\d{2})(\d{2})(\d{2})[A-Z]/i);if(!m)return null;const y=2000+Number(m[1]),mo=Number(m[2]),day=Number(m[3]);const d=new Date(y,mo-1,day,12);return d.getFullYear()===y&&d.getMonth()===mo-1&&d.getDate()===day?d:null;};
-  const ageDays=r=>dateAgeDays(parseDate(createdValue(r)));
+  const ageDays=r=>dateAgeDays(createdDate(r));
   const eventAgeDays=r=>{const d=taskEventDate(r);return d?dateAgeDays(d):null;};
   const parentAgeDays=r=>{const raw=parentEvent(r);const d=ticketDateFromCode(raw);return d?dateAgeDays(d):null;};
 
@@ -675,9 +694,15 @@
     const tools=document.createElement('div');tools.className='multi-tools';tools.innerHTML='<input type="search" placeholder="Buscar…"><button type="button" data-a="toggle">Todos</button><button type="button" class="multi-close" data-a="close" aria-label="Cerrar filtro">×</button>';
     const list=document.createElement('div');list.className='multi-list';panel.append(tools,list);wrap.append(btn,panel);host.append(wrap);
     const render=()=>{btn.textContent=selectedLabel(key,bag);const q=norm(tools.querySelector('input').value).toLowerCase();const vals=(state.filterValues[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));list.innerHTML=vals.length?vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}><span>${esc(v)}</span></label>`).join(''):'<div class="multi-empty">Sin valores</div>';const toggleBtn=tools.querySelector('[data-a="toggle"]');const allSelected=vals.length>0&&vals.every(v=>bag.has(v));if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';list.querySelectorAll('input').forEach(i=>i.onchange=()=>{i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter(scope,key,bag);btn.textContent=selectedLabel(key,bag);render();state.page=1;applyFilters();});};
-    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}const vals=(state.filterValues[key]||[]);const allSelected=vals.length>0&&vals.every(v=>bag.has(v));if(allSelected)bag.clear();else vals.forEach(v=>bag.add(v));syncTopAndColumnFilter(scope,key,bag);render();state.page=1;applyFilters();});host._refresh=render;
+    btn.onclick=e=>{e.stopPropagation();closeAllFloatingMenus(panel);panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}const vals=(state.filterValues[key]||[]);const allSelected=vals.length>0&&vals.every(v=>bag.has(v));if(allSelected)bag.clear();else vals.forEach(v=>bag.add(v));syncTopAndColumnFilter(scope,key,bag);render();state.page=1;applyFilters();});host._refresh=render;
   }
   function buildAllMultis(){for(const [id,key] of [['topEstado','Estado'],['topContratista','Contratista'],['topArbol','Arbol'],['topCapa','Capa'],['topSubCapa','SubCapa'],['topTipif','Tipif'],['colStatus','Estado'],['colContractor','Contratista'],['colAffected','Afectacion'],['colCapa','Capa'],['colSubcapa','SubCapa'],['colTipif','Tipif'],['colTree','Arbol']])makeMulti(id,key,id.startsWith('top')?'top':'col');}
+  function closeAllFloatingMenus(except=null){
+    document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==except)p.classList.add('hidden');});
+    for(const el of ['etaIngresoDetails','dailyStateDetails','columnChooser']){
+      const d=document.getElementById(el);if(d!==except && d) d.open=false;
+    }
+  }
   function closeTableFilterPanels(){document.querySelectorAll('.excel-panel').forEach(p=>p.classList.add('hidden'));}
 
 
@@ -741,14 +766,26 @@
   }
 
   function rowSearchText(r){return [taskId(r),node(r),tech(r),parentEvent(r),eventCode(r),contractor(r),capa(r),subcapa(r),siglaTarea(r),r.AddressLine1,r.address].map(norm).join(' ').toLowerCase();}
-  function rowValueByColumn(r,key){if(key.startsWith('mira_'))return miraValue(r,key);switch(key){case'task':return taskId(r);case'created':return formatDate(createdValue(r));case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'parentAgeDays':return parentAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);case'suspensiones':return suspendedCount(r);default:return'';}}
+  function rowValueByColumn(r,key){if(key.startsWith('mira_'))return miraValue(r,key);switch(key){case'task':return taskId(r);case'created':return createdDisplay(r);case'priority':return priority(r);case'node':return node(r);case'tipif':return siglaTarea(r);case'tipificacion':return norm(r.TipificacionTarea||r['Tipificacion Tarea']);case'status':return statusEs(r.Estado||r.status);case'capa':return capa(r);case'subcapa':return subcapa(r);case'capaSubcapa':return [capa(r),subcapa(r)].filter(Boolean).join(' / ');case'origin':return origin(r);case'affected':return affected(r);case'parentEvent':return parentEvent(r);case'event':return oracleEvent(r)||parentEvent(r);case'eventSigla':return eventSigla(r);case'ageDays':return ageDays(r);case'eventAgeDays':return eventAgeDays(r);case'parentAgeDays':return parentAgeDays(r);case'contractor':return contractor(r);case'scheduled':return formatDateOnly(scheduled(r));case'startTime':return formatDate(startValue(r));case'endTime':return formatDate(endValue(r));case'tech':return tech(r);case'resource':return resource(r);case'tree':return tree(r);case'suspensiones':return suspendedCount(r);default:return'';}}
   function buildColumnValueCache(){
-    const rows=availableRows();state.columnValueCache={};
+    const rows=availableRows();state.columnValueCache={};state.columnColorCache={};state.columnColorOptionsCache={};
+    const dups=duplicateSets(rows);
     for(const [key] of COLUMN_DEFS){
       state.columnValueCache[key]=[...new Set(rows.map(r=>String(rowValueByColumn(r,key)??'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'}));
+      if(COLOR_FILTERABLE_KEYS.has(key)){
+        const mapping=new Map(),used=new Set();
+        for(const r of rows){
+          const v=String(rowValueByColumn(r,key)??'').trim();
+          const color=columnColorKey(r,key,dups);
+          used.add(['red','salmon','pink'].includes(color)?'red':color);
+          if(v&&!mapping.has(v))mapping.set(v,color);
+        }
+        state.columnColorCache[key]=mapping;
+        state.columnColorOptionsCache[key]=[...used].filter(c=>COLOR_META[c]).map(c=>({key:c,...COLOR_META[c]}));
+      }
     }
   }
-  function columnFilterLabel(key){const bag=state.columnSelections[key];if(!bag||bag.size===0)return'Todos';const vals=state.columnValueCache[key]||[];if(bag.size===vals.length)return'Todos';if(bag.size===1)return[...bag][0];return`${bag.size} selecc.`;}
+  function columnFilterLabel(key){const color=state.columnColorSelections[key];if(color)return `● ${COLOR_META[color]?.label||color}`;const bag=state.columnSelections[key];if(!bag||bag.size===0)return'Todos';const vals=state.columnValueCache[key]||[];if(bag.size===1)return[...bag][0];return`${bag.size} selecc.`;}
   function makeExcelColumnFilter(host,key){
     host.innerHTML='';host.dataset.filterKey=key;
     const wrap=document.createElement('div');wrap.className='multi excel-multi';
@@ -767,62 +804,119 @@
       panel.style.maxHeight=Math.max(150,window.innerHeight-r.bottom-16)+'px';
     };
     const renderColors=()=>{
-      const rows=availableRows(),options=colorOptionsForColumn(key,rows),selected=state.columnColorSelections[key]||'';
+      const options=state.columnColorOptionsCache?.[key]||[],selected=state.columnColorSelections[key]||'';
       if(!options.length){colorBox.classList.add('hidden');colorBox.innerHTML='';return;}
       colorBox.classList.remove('hidden');
       colorBox.innerHTML='<div class="color-filter-title">Filtrar por color</div><div class="color-filter-options">'+
-        `<button type="button" class="color-filter-chip ${!selected?'active':''}" data-color=""><span class="color-swatch clear-swatch">×</span>Todos</button>`+
+        `<button type="button" class="color-filter-chip" data-color=""><span class="color-swatch clear-swatch">×</span>Todos</button>`+
         options.map(o=>`<button type="button" class="color-filter-chip ${selected===o.key?'active':''}" data-color="${esc(o.key)}"><span class="color-swatch" style="background:${o.hex}"></span>${esc(o.label)}</button>`).join('')+
         '</div>';
       colorBox.querySelectorAll('[data-color]').forEach(b=>b.onclick=e=>{
         e.stopPropagation();const color=b.dataset.color||'';
-        if(color)state.columnColorSelections[key]=color;else delete state.columnColorSelections[key];
-        state.page=1;renderColors();applyFilters();
+        if(color){
+           state.columnColorSelections[key]=color;
+           bag.clear();
+           delete state.textFilters[key];
+           const input=document.querySelector(`[data-text-col="${key}"]`);if(input)input.value='';
+           syncTopAndColumnFilter('column',key,bag);
+         }else {
+           // Todos en colores significa quitar cualquier filtro de ESTA columna.
+           delete state.columnColorSelections[key];
+           bag.clear();
+           delete state.textFilters[key];
+           syncTopAndColumnFilter('column',key,bag);
+         }
+         state.page=1;updateButton();render();applyFilters();
       });
     };
-    const render=()=>{
+    const updateButton=()=>{
+      const color=state.columnColorSelections[key];
       btn.textContent=`${columnFilterLabel(key)} ▾`;
-      const q=norm(search.value).toLowerCase();let vals=(state.columnValueCache[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));
-      const total=vals.length;vals=vals.slice(0,350);const rows=availableRows();
+      btn.classList.toggle('has-color-filter',!!color);
+      btn.style.setProperty('--selected-filter-color',color?(COLOR_META[color]?.hex||'#fff'):'transparent');
+    };
+    const render=()=>{
+      updateButton();
+      const q=norm(search.value).toLowerCase();const activeColor=state.columnColorSelections[key]||'';const colorMap=state.columnColorCache?.[key];let vals=(state.columnValueCache[key]||[]).filter(v=>(!q||v.toLowerCase().includes(q))&&(!activeColor||(['red','pink','salmon'].includes(colorMap?.get(v))?'red':colorMap?.get(v))===activeColor));
+      const total=vals.length;vals=vals.slice(0,350);
       list.innerHTML=vals.map(v=>{
-        const ck=valueColorKey(key,v,rows),meta=COLOR_META[ck];
+        const ck=colorMap?.get(v),meta=COLOR_META[ck];
         const sw=meta?`<span class="filter-value-swatch" style="background:${meta.hex}" title="${esc(meta.label)}"></span>`:'';
         return `<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}>${sw}<span>${esc(v)}</span></label>`;
       }).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';
-      const toggleBtn=panel.querySelector('[data-a="toggle"]'),allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));
-      if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';
+      const toggleBtn=panel.querySelector('[data-a="toggle"]');
+      if(toggleBtn)toggleBtn.textContent='Todos';
       list.querySelectorAll('input').forEach(i=>i.onchange=()=>{
-        i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();
+        delete state.columnColorSelections[key];i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();
       });
       renderColors();
     };
-    btn.onclick=e=>{e.stopPropagation();document.querySelectorAll('.multi-panel').forEach(p=>{if(p!==panel)p.classList.add('hidden')});const open=panel.classList.contains('hidden');if(!open){close();return;}render();panel.classList.remove('hidden');place();search.focus();};
+    btn.onclick=e=>{e.stopPropagation();closeAllFloatingMenus(panel);const open=panel.classList.contains('hidden');if(!open){close();return;}render();panel.classList.remove('hidden');place();search.focus();};
     panel.onclick=e=>e.stopPropagation();search.oninput=render;
     panel.querySelector('[data-a="close"]').onclick=e=>{e.stopPropagation();close();};
-    panel.querySelector('[data-a="toggle"]').onclick=e=>{e.stopPropagation();const allVals=state.columnValueCache[key]||[],allSelected=allVals.length>0&&allVals.every(v=>bag.has(v));if(allSelected)bag.clear();else allVals.forEach(v=>bag.add(v));syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();};
-    host._refresh=render;btn.textContent=columnFilterLabel(key)+' ▾';
+    panel.querySelector('[data-a="toggle"]').onclick=e=>{e.stopPropagation();
+      // Todos = sin filtro, nunca almacenar una selección masiva de casillas.
+      bag.clear();
+      delete state.columnColorSelections[key];
+      delete state.textFilters[key];
+      search.value='';
+      syncTopAndColumnFilter('column',key,bag);
+      render();state.page=1;applyFilters();
+    };
+    host._refresh=()=>{if(panel.classList.contains('hidden'))updateButton();else render();};updateButton();
+  }
+  // KPI = filtro local acumulativo: se cruza con los filtros existentes.
+  // El rango del KPI Más antigua queda fijado al día observado al pulsarlo.
+  function kpiMatches(r,label,threshold){
+    const age=ageDays(r),eventAge=eventAgeDays(r),sig=upper(siglaTarea(r)),layer=capa(r).toLowerCase();
+    switch(label){
+      case 'Abiertos':return isLiveStatus(r.Estado||r.status);
+      case '+3 días':return age!==null&&age>=3;
+      case '2 días':return age===2;
+      case '1 día':return age===1;
+      case 'Más antigua':return age===threshold;
+      case 'Caídas nodo':return sig==='VFF'||sig==='FMR';
+      case 'Caídas Edif':return sig==='VFE';
+      case 'Ingress':return ['EDF','LDI','LIH','LII','EDI'].includes(sig);
+      case 'Fibra':return layer.includes('fibra');
+      case 'Red + Energía':return layer.includes('usac');
+      case 'Infra':return layer==='infra';
+      case 'Edificio':return layer==='edificio';
+      case 'Ev +2d':return eventAge!==null&&eventAge>=2;
+      case 'Ev +3d':return eventAge!==null&&eventAge>=3;
+      case 'Ev +7d':return eventAge!==null&&eventAge>=7;
+      default:return true;
+    }
+  }
+  function applyKpiSelection(rows){
+    if(!state.activeKpis.size)return rows;
+    return rows.filter(r=>{
+      for(const [label,threshold] of state.activeKpis){
+        if(!kpiMatches(r,label,threshold))return false;
+      }
+      return true;
+    });
+  }
+  function toggleKpi(label){
+    if(state.activeKpis.has(label))state.activeKpis.delete(label);
+    else{
+      const days=label==='Más antigua'?state.filtered.map(ageDays).filter(Number.isFinite):[];
+      state.activeKpis.set(label,label==='Más antigua'?(days.length?Math.max(...days):0):true);
+    }
+    applyFilters();
   }
   function applyFilters(){
-    if(state.ingresoDayKey){
-      // Vista temporal: usa la MISMA fuente que el indicador Ingreso ETA.
-      // Incluye tareas cerradas: el filtro de Estado no se aplica aquí.
-      const candidates=movementRowsForDailyState();
-      const unique=new Map();
-      for(const r of candidates){
-        const d=parseDate(createdValue(r));
-        if(!d||localDayKey(d)!==state.ingresoDayKey)continue;
-        const id=taskId(r);if(!id)continue;
-        // Preferimos la fila ya consolidada del operativo para representar cada ticket.
-        if(!unique.has(id))unique.set(id,r);
-      }
-      const currentById=new Map(state.current.map(r=>[taskId(r),r]));
-      let rows=[...unique].map(([id,r])=>currentById.get(id)||r);
-      if(state.sort.key){const {key,direction}=state.sort;const sortVal=r=>key==='created'?(parseDate(createdValue(r))?.getTime()||0):key==='scheduled'?(parseDate(scheduled(r))?.getTime()||0):rowValueByColumn(r,key);rows.sort((a,b)=>compare(sortVal(a),sortVal(b))*direction);}
-      state.filtered=rows;state.page=1;renderAll();return;
+    // Semántica estable: un nodo/evento duplicado lo es en el operativo completo,
+    // incluso si los filtros solo dejan visible una de sus tareas.
+    state.duplicateBaseSets=duplicateSets(availableRows());
+    if(state.ingresoDayKey || state.dailyCompletedDayKey){
+      let rows=state.ingresoDayKey ? ingresoRowsForDay(state.ingresoDayKey) : completedRowsForDay(state.dailyCompletedDayKey);
+      if(state.sort.key){const {key,direction}=state.sort;const sortVal=r=>key==='created'?(createdDate(r)?.getTime()||0):key==='scheduled'?(parseDate(scheduled(r))?.getTime()||0):rowValueByColumn(r,key);rows.sort((a,b)=>compare(sortVal(a),sortVal(b))*direction);}
+      state.filtered=applyKpiSelection(rows);state.page=1;renderAll();return;
     }
     const q=norm($('#opSearch').value).toLowerCase();let rows=availableRows();
     rows=rows.filter(r=>{if(q&&!rowSearchText(r).includes(q))return false;for(const key of ['Estado','Contratista','Arbol','Capa','SubCapa','Tipif']){const bag=state.topFilters[key];if(bag?.size&&!bag.has(getValue(r,key)))return false;}for(const key of ['Estado','Contratista','Afectacion','Capa','SubCapa','Tipif','Arbol']){const bag=state.colFilters[key];if(bag?.size&&!bag.has(getValue(r,key)))return false;}for(const [k,bag] of Object.entries(state.columnSelections)){if(bag?.size&&!bag.has(String(rowValueByColumn(r,k)??'').trim()))return false;}for(const [k,v] of Object.entries(state.textFilters)){if(v&&!String(rowValueByColumn(r,k)).toLowerCase().includes(v.toLowerCase()))return false;}return true;});
-    const dups=duplicateSets(rows);
+    const dups=state.duplicateBaseSets;
     for(const [k,color] of Object.entries(state.columnColorSelections||{})){
       if(!color)continue;
       const requested=['red','salmon','pink'].includes(color)?'red':color;
@@ -831,13 +925,15 @@
         return (['red','salmon','pink'].includes(actual)?'red':actual)===requested;
       });
     }
-    if(state.sort.key){const {key,direction}=state.sort;const sortVal=r=>key==='created'?(parseDate(createdValue(r))?.getTime()||0):key==='scheduled'?(parseDate(scheduled(r))?.getTime()||0):rowValueByColumn(r,key);rows.sort((a,b)=>compare(sortVal(a),sortVal(b))*direction);}state.filtered=rows;state.page=1;renderAll();
+    rows=applyKpiSelection(rows);
+    if(state.sort.key){const {key,direction}=state.sort;const sortVal=r=>key==='created'?(createdDate(r)?.getTime()||0):key==='scheduled'?(parseDate(scheduled(r))?.getTime()||0):rowValueByColumn(r,key);rows.sort((a,b)=>compare(sortVal(a),sortVal(b))*direction);}state.filtered=rows;state.page=1;renderAll();
   }
   function compare(a,b){const na=Number(a),nb=Number(b);if(Number.isFinite(na)&&Number.isFinite(nb))return na-nb;return String(a??'').localeCompare(String(b??''),'es',{numeric:true,sensitivity:'base'});}
   function resetFilters(){
     // V23.5: limpieza O( filtros ) sin reconstruir miles de opciones de los menús.
     // Mantener los Set originales: los listeners de los controles capturan su referencia.
-    state.ingresoDayKey=null;state.ingresoLabel=null;
+    state.ingresoDayKey=null;state.ingresoLabel=null;state.dailyCompletedDayKey=null;
+    state.activeKpis.clear();
     $('#opSearch').value='';
     Object.keys(state.textFilters).forEach(k=>delete state.textFilters[k]);
     $$('[data-text-col]').forEach(i=>i.value='');
@@ -855,7 +951,7 @@
     document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));
     document.querySelectorAll('[data-filter-key]').forEach(host=>{
       const btn=host.querySelector('.excel-filter-btn');
-      if(btn)btn.textContent=columnFilterLabel(host.dataset.filterKey)+' ▾';
+      if(btn){const color=state.columnColorSelections[host.dataset.filterKey];btn.textContent=columnFilterLabel(host.dataset.filterKey)+' ▾';btn.classList.toggle('has-color-filter',!!color);btn.style.setProperty('--selected-filter-color',color?(COLOR_META[color]?.hex||'#fff'):'transparent');}
     });
     for(const [id,key,scope] of [
       ['topEstado','Estado','top'],['topContratista','Contratista','top'],
@@ -899,39 +995,39 @@
       return true;
     });
   }
-  function renderDailyStatePanel(){
-    const tbody=$('#dailyStateTbody');if(!tbody)return;
-    const now=new Date();const todayKey=localDayKey(now);const yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);const yesterdayKey=localDayKey(yesterday);
-    const fmtDay=d=>d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
-    $('#dailyTodayHead').textContent=`Hoy ${fmtDay(now)}`;$('#dailyYesterdayHead').textContent=`Ayer ${fmtDay(yesterday)}`;
-    const rows=movementRowsForDailyState();
-    const defs=[['completed','Completados'],['suspended','Suspendidos'],['cancelled','Cancelados'],['notdone','No realizados']];
-    const buckets=new Map(defs.map(([k])=>[k,{today:new Set(),yesterday:new Set()}]));
-    for(const r of rows){
-      const d=movementDate(r);if(!d)continue;const day=localDayKey(d);if(day!==todayKey&&day!==yesterdayKey)continue;
-      const k=statusKey(r.Estado||r.status);const target=buckets.get(k);if(!target)continue;const id=taskId(r)||`${resource(r)}|${d.getTime()}|${k}`;
-      if(day===todayKey)target.today.add(id);else target.yesterday.add(id);
-    }
-    const display=defs.map(([k,label])=>[k,label,buckets.get(k).yesterday.size,buckets.get(k).today.size]);
-    tbody.innerHTML=display.map(([key,label,y,t])=>`<tr class="state-${key}"><td><span class="daily-state-label">${esc(label)}</span></td><td class="daily-num ${y===0?'daily-state-zero':''}"><button class="daily-export-btn" type="button" data-daily-state="${esc(key)}" data-daily-day="${esc(yesterdayKey)}" ${y===0?'disabled':''} title="Descargar ${esc(label)} de ayer en Excel">${y}</button></td><td class="daily-num ${t===0?'daily-state-zero':''}"><button class="daily-export-btn" type="button" data-daily-state="${esc(key)}" data-daily-day="${esc(todayKey)}" ${t===0?'disabled':''} title="Descargar ${esc(label)} de hoy en Excel">${t}</button></td></tr>`).join('');
-    tbody.querySelectorAll('.daily-export-btn').forEach(btn=>btn.onclick=e=>{e.stopPropagation();exportDailyStateTickets(btn.dataset.dailyState,btn.dataset.dailyDay);});
-    const allY=$('#btnDailyAllYesterday'),allT=$('#btnDailyAllToday');if(allY){allY.textContent=`Excel Ayer (${display.reduce((a,x)=>a+x[2],0)})`;allY.onclick=e=>{e.stopPropagation();exportDailyAllTickets(yesterdayKey);};}if(allT){allT.textContent=`Excel Hoy (${display.reduce((a,x)=>a+x[3],0)})`;allT.onclick=e=>{e.stopPropagation();exportDailyAllTickets(todayKey);};}
-    const completed=display[0]||['completed','Completados',0,0];
-    $('#dailyStateSummary').textContent=`Completados: Ayer ${completed[2]} · Hoy ${completed[3]}`;
+  function completedRowsForDay(dayKey){
+    return dailyStateRowsForExport('completed',dayKey);
   }
-
+  function dailyDateKey(which){
+    const n=new Date();return localDayKey(new Date(n.getFullYear(),n.getMonth(),n.getDate()-(which==='ayer'?1:0)));
+  }
+  function renderDailyStatePanel(){
+    const y=dailyDateKey('ayer'),t=dailyDateKey('hoy');
+    const cy=completedRowsForDay(y).length,ct=completedRowsForDay(t).length;
+    $('#dailyStateSummary').textContent=`Completados: Ayer ${cy} · Hoy ${ct}`;
+    $('#etaCompletedCountAyer').textContent=cy;
+    $('#etaCompletedCountHoy').textContent=ct;
+    $('#dailyStateDetails').classList.toggle('is-active',!!state.dailyCompletedDayKey);
+    $('#btnCompletedYesterday').classList.toggle('selected',state.dailyCompletedDayKey===y);
+    $('#btnCompletedToday').classList.toggle('selected',state.dailyCompletedDayKey===t);
+  }
+  function ingresoRowsForDay(dayKey){
+    const currentById=new Map(state.current.map(r=>[taskId(r),r]));
+    const unique=new Map();
+    for(const r of movementRowsForDailyState()){
+      const d=createdDate(r);if(!d||localDayKey(d)!==dayKey)continue;
+      const id=taskId(r);if(!id)continue;
+      const cur=currentById.get(id)||r;
+      if(statusKey(cur.Estado||cur.status)==='cancelled')continue;
+      unique.set(id,cur);
+    }
+    return [...unique.values()];
+  }
   function renderIngresoEta(){
     const box=$('#etaIngresoSummary');if(!box)return;
     const now=new Date(), todayKey=localDayKey(now),yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1),yesterdayKey=localDayKey(yesterday);
-    // Se usa CreadoExacto (alternativa Creado), nunca la fecha de agendamiento.
-    // La selección de movimiento conserva filtros excepto Estado: incluye abiertas y cerradas.
-    const yesterdayIds=new Set(),todayIds=new Set();
-    for(const r of movementRowsForDailyState()){
-      const created=parseDate(createdValue(r));if(!created)continue;
-      const key=localDayKey(created),id=taskId(r);if(!id)continue;
-      if(key===todayKey)todayIds.add(id);
-      else if(key===yesterdayKey)yesterdayIds.add(id);
-    }
+    const yesterdayIds=new Set(ingresoRowsForDay(yesterdayKey).map(taskId));
+    const todayIds=new Set(ingresoRowsForDay(todayKey).map(taskId));
     box.textContent=`Ingreso ETA: Ayer ${yesterdayIds.size} · Hoy ${todayIds.size}`;
     box.title=`Seleccionar los tickets creados ayer (${yesterdayIds.size}) u hoy (${todayIds.size})`;
     $('#etaIngresoCountAyer').textContent=yesterdayIds.size;
@@ -946,7 +1042,17 @@
   function renderAll(){renderKpis();renderDailyStatePanel();renderIngresoEta();renderTable();updateMap();}
   function computeKpis(){const rows=state.filtered;const count=p=>rows.filter(p).length,unique=p=>new Set(rows.filter(p).map(taskId)).size;const eventDays=r=>eventAgeDays(r);const days=rows.map(ageDays).filter(Number.isFinite);const oldestDays=days.length?Math.max(...days):0;const layer=r=>capa(r).toLowerCase();return [
     ['Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],['+3 días',count(r=>(ageDays(r)??-1)>=3),'age-red'],['2 días',count(r=>ageDays(r)===2),'age-yellow'],['1 día',count(r=>ageDays(r)===1),'age-green'],['Más antigua',`${oldestDays} días`,''],['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],['Fibra',unique(r=>layer(r).includes('fibra')),'capa-fibra'],['Red + Energía',unique(r=>layer(r).includes('usac')),'capa-usac'],['Infra',unique(r=>layer(r)==='infra'),'capa-infra'],['Edificio',unique(r=>layer(r)==='edificio'),'capa-edificio'],['Ev +2d',count(r=>(eventDays(r)??-1)>=2),''],['Ev +3d',count(r=>(eventDays(r)??-1)>=3),''],['Ev +7d',count(r=>(eventDays(r)??-1)>=7),'']];}
-  function renderKpis(){state.kpiValues=computeKpis();$('#kpiStrip').innerHTML=state.kpiValues.map(([l,v,c])=>`<article class="kpi ${c}"><div class="l" title="${esc(l)}">${esc(l)}</div><div class="v">${esc(v)}</div></article>`).join('');}
+  function renderKpis(){
+    state.kpiValues=computeKpis();
+    $('#kpiStrip').innerHTML=state.kpiValues.map(([l,v,c])=>{
+      const active=state.activeKpis.has(l);
+      return `<button type="button" class="kpi ${c} ${active?'kpi-selected':''}" data-kpi-label="${esc(l)}" aria-pressed="${active}" title="${esc(l)}: ${esc(v)} · ${active?'Quitar filtro':'Filtrar tickets'}"><span class="l">${esc(l)}</span><span class="v">${esc(v)}</span></button>`;
+    }).join('');
+  }
+  $('#kpiStrip').addEventListener('click',e=>{
+    const button=e.target.closest('[data-kpi-label]');
+    if(button)toggleKpi(button.dataset.kpiLabel);
+  });
 
 
   function buildColumns(){document.querySelectorAll('.excel-filter-portal').forEach(p=>p.remove());const hr=$('#taskHeaderRow'),fr=$('#taskFilterRow');hr.innerHTML='';fr.innerHTML='';buildColumnValueCache();for(const [key,label] of COLUMN_DEFS){const th=document.createElement('th');th.dataset.column=key;th.textContent=label;th.title='Click para ordenar';th.style.cursor='pointer';th.onclick=()=>{if(window.__ofsResizeGuard)return;if(state.sort.key===key)state.sort.direction*=-1;else state.sort={key,direction:1};applyFilters();};hr.append(th);const fh=document.createElement('th');fh.dataset.column=key;const host=document.createElement('div');host.className='multi-host';fh.append(host);fr.append(fh);makeExcelColumnFilter(host,key);}buildColumnChooser();applyColumnVisibility();installColumnResizers();}
@@ -954,14 +1060,14 @@
   function buildColumnChooser(){const p=$('#columnChooserPanel');p.innerHTML=`<div class="column-chooser-actions"><button id="colsAll" class="btn ghost small">Todas</button><button id="colsEss" class="btn ghost small">Esenciales</button><button id="colsClose" class="btn ghost small chooser-close">Cerrar ×</button></div>${COLUMN_DEFS.map(([k,l])=>`<label><input class="col-check" type="checkbox" value="${k}" ${state.hiddenColumns.has(k)?'':'checked'}><span>${esc(l)}</span></label>`).join('')}`;p.querySelectorAll('.col-check').forEach(i=>i.onchange=()=>{i.checked?state.hiddenColumns.delete(i.value):state.hiddenColumns.add(i.value);applyColumnVisibility();savePreferences();});$('#colsAll').onclick=e=>{e.preventDefault();state.hiddenColumns.clear();buildColumnChooser();applyColumnVisibility();savePreferences();};$('#colsEss').onclick=e=>{e.preventDefault();state.hiddenColumns=new Set(COLUMN_DEFS.map(x=>x[0]).filter(k=>!ESSENTIAL_COLUMNS.has(k)));buildColumnChooser();applyColumnVisibility();savePreferences();};$('#colsClose').onclick=e=>{e.preventDefault();$('#columnChooser').open=false;};}
   function applyColumnVisibility(){for(const [k] of COLUMN_DEFS)document.querySelectorAll(`[data-column="${k}"]`).forEach(el=>el.classList.toggle('col-hidden',state.hiddenColumns.has(k)));}
 
-  function createdClass(r){const d=parseDate(createdValue(r));if(!d)return'';const now=new Date();const today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());const day=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());const age=Math.max(0,Math.floor((today-day)/86400000));return age===0?'created-white':age===1?'created-green':age===2?'created-yellow':'created-old';}
+  function createdClass(r){const d=createdDate(r);if(!d)return'';const now=new Date();const today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());const day=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());const age=Math.max(0,Math.floor((today-day)/86400000));return age===0?'created-white':age===1?'created-green':age===2?'created-yellow':'created-old';}
 
   function duplicateSets(rows){
     const countBy=(getter)=>{const m=new Map();for(const r of rows){const v=upper(getter(r));if(!v||v==='—')continue;m.set(v,(m.get(v)||0)+1);}return new Set([...m].filter(([,n])=>n>1).map(([v])=>v));};
     return {nodes:countBy(node),parents:countBy(parentEvent)};
   }
 
-  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=duplicateSets(state.filtered);$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:(k==='eventAgeDays'||k==='parentAgeDays')?`age-cell ${eventAgeClass(k==='parentAgeDays'?parentAgeDays(r):eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='subcapa'?`subcapa-cell ${subcapaClass(subcapa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=e=>{const btn=e.target.closest('[data-mira-node]');if(btn){showMiraPopup(btn.dataset.miraNode);return;}openTaskDrawer(tr.dataset.task)});requestAnimationFrame(updateTableHorizontalScroller);scheduleMiraScan();}
+  function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=state.duplicateBaseSets||duplicateSets(availableRows());$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:(k==='eventAgeDays'||k==='parentAgeDays')?`age-cell ${eventAgeClass(k==='parentAgeDays'?parentAgeDays(r):eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='subcapa'?`subcapa-cell ${subcapaClass(subcapa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=e=>{const btn=e.target.closest('[data-mira-node]');if(btn){showMiraPopup(btn.dataset.miraNode);return;}if(e.target.closest('.task-link'))openTaskDrawer(tr.dataset.task)});requestAnimationFrame(updateTableHorizontalScroller);scheduleMiraScan();}
 
   function cellHtml(r,k){if(k.startsWith('mira_')){
     const lowUp=k==='mira_up'&&miraUpRaw(r)!==null&&miraUpRaw(r)<80;
@@ -972,7 +1078,7 @@
   }if(k==='task')return`<span class="task-link">${esc(taskId(r))}</span>`;if(k==='status')return badgeStatus(r.Estado||r.status);if(k==='affected')return affected(r)?`<span class="badge ${/^SI$/i.test(affected(r))?'warn':'ok'}">${esc(affected(r))}</span>`:'—';return esc(fmt(rowValueByColumn(r,k)));}
 
   function taskHistoryFromDate(id,cur){
-    const direct=parseDate(createdValue(cur));
+    const direct=createdDate(cur);
     if(direct)return localDayKey(direct);
     const m=String(id||'').trim().match(/^(\d{2})(\d{2})(\d{2})/);
     if(m){const yy=2000+Number(m[1]),mm=Number(m[2]),dd=Number(m[3]);const d=new Date(yy,mm-1,dd);if(d.getFullYear()===yy&&d.getMonth()===mm-1&&d.getDate()===dd)return localDayKey(d);}
@@ -1022,34 +1128,24 @@
     const closure=norm(record.closure_notes ?? record.closureNotes ?? '');
     const reason=norm(record.XA_Complete_Reason ?? record.completeReason ?? '');
     return [
-      showActivityNotes && notes ? `<div class="notes"><div class="intervention-field-label">Notas de actividad</div>${esc(notes)}</div>` : '',
-      closure ? `<div class="notes"><div class="intervention-field-label">Nota de intervención</div>${esc(closure)}</div>` : '',
-      reason ? `<div class="intervention-reason"><strong>Motivo de cierre:</strong> ${esc(reason)}</div>` : ''
+      showActivityNotes && notes ? `<div class="notes"><div class="intervention-field-label">NOTA DE CREACIÓN</div>${esc(notes)}</div>` : '',
+      closure ? `<div class="notes"><div class="intervention-field-label">NOTA DE INTERVENCIÓN</div>${esc(closure)}</div>` : '',
+      (reason && statusKey(record.Estado||record.estado||record.status)==='completed') ? `<div class="intervention-reason"><strong>Motivo de cierre:</strong> ${esc(reason)}</div>` : ''
     ].join('');
   }
   function renderTaskDrawer(id,cur,hist,{loading=false,error='',sources=''}={}){
     let ordered=historySort(hist||[]);
-    const currentKey=statusKey(cur.Estado||cur.status);
-    if(['cancelled','completed','notdone'].includes(currentKey)){
-      ordered=ordered.sort((a,b)=>{
-        const am=statusKey(a.Estado||a.estado||a.status)===currentKey?1:0;
-        const bm=statusKey(b.Estado||b.estado||b.status)===currentKey?1:0;
-        if(am!==bm)return bm-am;
-        return 0;
-      });
-    }
     const c=historyCounters(ordered);
     const summary=[
-      ['Estado actual',statusEs(cur.Estado||cur.status)],['Creado Tableau',formatDate(createdValue(cur))],['Nodo',node(cur)],
+      ['Estado actual',statusEs(cur.Estado||cur.status)],['Creado Tableau',createdDisplay(cur)],['Nodo',node(cur)],
       ['Contratista',contractor(cur)],['Técnico',tech(cur)],['Afectación',affected(cur)],['Prioridad',priority(cur)],
       ['Veces suspendida',loading?'…':c.suspended],['Veces iniciada',loading?'…':c.started]
     ];
-    const currentCard=`<div class="visit current-live"><div class="visit-card"><div class="visit-top">${badgeStatus(cur.Estado||cur.status)}<strong>Estado actual operativo</strong></div><div class="visit-times"><b>Start:</b> ${esc(formatDate(startValue(cur)))} · <b>End:</b> ${esc(formatDate(endValue(cur)))} · <b>Agendado:</b> ${esc(formatDateOnly(scheduled(cur)))}</div><div class="visit-meta">${esc(fmt(tech(cur)))} · ${esc(fmt(contractor(cur)))} · ${esc(fmt(tree(cur)))} · ${esc(fmt(node(cur)))}</div>${interventionDetailsHtml(cur,{showActivityNotes:true})}</div></div>`;
-    const timeline=ordered.map((x,i)=>`<div class="visit"><div class="visit-card"><div class="visit-top">${badgeStatus(x.Estado||x.estado||x.status)}<strong>${i===0?'Última intervención':'Intervención'}</strong></div><div class="visit-times"><b>Fecha:</b> ${esc(formatDate(x.FechaIntervencion||x.FechaEfectiva||x.fecha_intervencion||x.date))} · <b>Start:</b> ${esc(formatDate(startValue(x)))} · <b>End:</b> ${esc(formatDate(endValue(x)))} · <b>Agendado:</b> ${esc(formatDateOnly(scheduled(x)))}</div><div class="visit-meta">${esc(fmt(tech(x)))} · ${esc(fmt(contractor(x)))} · ${esc(fmt(tree(x)))} · ${esc(fmt(node(x)))}</div>${interventionDetailsHtml(x)}</div></div>`).join('');
+    const timeline=ordered.map((x,i)=>`<div class="visit"><div class="visit-card"><div class="visit-top">${badgeStatus(x.Estado||x.estado||x.status)}<strong>${i===0?'Última intervención':'Intervención'}</strong></div><div class="visit-times"><b>Fecha:</b> ${esc(formatDate(x.FechaIntervencion||x.FechaEfectiva||x.fecha_intervencion||x.date))} · <b>Start:</b> ${esc(formatDate(startValue(x)))} · <b>End:</b> ${esc(formatDate(endValue(x)))} · <b>Agendado:</b> ${esc(formatDateOnly(scheduled(x)))}</div><div class="visit-meta">${esc(fmt(tech(x)))} · ${esc(fmt(contractor(x)))} · ${esc(fmt(tree(x)))} · ${esc(fmt(node(x)))}</div>${interventionDetailsHtml(x,{showActivityNotes:i===0})}</div></div>`).join('');
     const sourceText=sources?`<div class="history-source">Fuente histórica: ${esc(sources)}</div>`:'';
     const historyBody=loading?'<div class="empty">Consultando OFSC…</div>':error?`<div class="empty">Histórico parcial/no disponible: ${esc(error)}</div>${timeline}`:(timeline||'<div class="empty">No se encontraron intervenciones anteriores para esta tarea.</div>');
     $('#drawerTitle').textContent=id;
-    $('#drawerBody').innerHTML=`<div class="detail-grid">${summary.map(([k,v])=>`<div class="detail-item"><div class="k">${esc(k)}</div><div class="v">${esc(fmt(v))}</div></div>`).join('')}</div><h3 class="history-title">Estado actual</h3><div class="timeline">${currentCard}</div><h3 class="history-title">Histórico de intervenciones</h3>${sourceText}<div class="timeline">${historyBody}</div>`;
+    $('#drawerBody').innerHTML=`<h3 class="history-title">Histórico de intervenciones</h3>${sourceText}<div class="timeline">${historyBody}</div>`;
   }
   async function fetchTaskHistoryOfsc(id,cur){
     const url=new URL(`${C.HISTORICO_BASE_URL}/api/ticket`);
@@ -1228,7 +1324,7 @@
   }
 
   function createdTimestamp(r){
-    const d=parseDate(createdValue(r));
+    const d=createdDate(r);
     return d?d.getTime():0;
   }
 
@@ -1728,26 +1824,147 @@
       const j=await fetchJson(u.toString(),{cache:'no-store'},25000);renderControlStatus(j);
     }catch(e){if(showModal)$('#controlBody').innerHTML=`<div class="empty">No se pudo consultar CONTROL: ${esc(e.message||e)}</div>`;}
   }
-  document.addEventListener('click',e=>{if(!e.target.closest('.multi'))document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));});
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('.multi')&&!e.target.closest('.excel-panel'))document.querySelectorAll('.multi-panel').forEach(p=>p.classList.add('hidden'));
+    if(!e.target.closest('#etaIngresoDetails')&&!e.target.closest('#dailyStateDetails')&&!e.target.closest('#columnChooser')){
+      for(const id of ['etaIngresoDetails','dailyStateDetails','columnChooser'])document.getElementById(id).open=false;
+    }
+  });
   function flashButton(btn){if(!btn)return;btn.classList.add('pressed');setTimeout(()=>btn.classList.remove('pressed'),180);}
   $('#btnRefresh').onclick=e=>{flashButton(e.currentTarget);loadAllOperativo(true);};
   function setIngresoEtaView(which){
-    const now=new Date();
-    const day=which==='ayer'?new Date(now.getFullYear(),now.getMonth(),now.getDate()-1):new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    state.ingresoDayKey=localDayKey(day);state.ingresoLabel=which;
-    $('#etaIngresoDetails').open=false;
-    applyFilters();
-    showToast(`Ingreso ETA: tareas creadas ${which==='ayer'?'ayer':'hoy'}. Usá «Restablecer filtros» para volver al operativo habitual.`);
+    const day=dailyDateKey(which);
+    if(state.ingresoDayKey===day){
+      resetFilters();
+      document.getElementById('etaIngresoDetails').open=true;
+      showToast('Filtros restablecidos · operativo habitual.');
+      return;
+    }
+    state.dailyCompletedDayKey=null;
+    state.ingresoDayKey=day;state.ingresoLabel=which;
+    closeAllFloatingMenus(document.getElementById('etaIngresoDetails'));applyFilters();
+    showToast(`Ingreso ETA ${which}: sin canceladas. Volvé a pulsar ${which} para restablecer filtros.`);
   }
-  function leaveIngresoEtaView(){
-    if(!state.ingresoDayKey)return;
+  function setCompletedDayView(which){
+    const day=dailyDateKey(which);
+    if(state.dailyCompletedDayKey===day){
+      resetFilters();
+      document.getElementById('dailyStateDetails').open=true;
+      showToast('Filtros restablecidos · operativo habitual.');
+      return;
+    }
     state.ingresoDayKey=null;state.ingresoLabel=null;
-    $('#etaIngresoDetails').open=false;
-    applyFilters();showToast('Se recuperó el filtrado operativo anterior');
+    state.dailyCompletedDayKey=day;
+    closeAllFloatingMenus(document.getElementById('dailyStateDetails'));applyFilters();
+    showToast(`Completados ${which}: volvé a pulsar ${which} para restablecer filtros.`);
   }
+  function exportIngresoDay(){
+    const day=state.ingresoDayKey||dailyDateKey('hoy');
+    const rows=ingresoRowsForDay(day);
+    if(!rows.length){showToast('No hay ingresos para exportar.');return;}
+    if(typeof XLSX==='undefined'){showToast('No se pudo cargar la librería Excel.');return;}
+    const wb=buildStyledTasksWorkbook(rows,visibleColumnDefs());
+    XLSX.writeFile(wb,`ETA_Ingreso_${day}.xlsx`,{cellStyles:true});
+  }
+  // Gráfico de tipificaciones (Ingreso / Completados), construido con los mismos
+  // conjuntos únicos que usan los contadores y los Excel. Sin llamadas adicionales.
+  function etaChartRows(kind,day){
+    const key=dailyDateKey(day);
+    return kind==='completados'?completedRowsForDay(key):ingresoRowsForDay(key);
+  }
+  // Mantener las caídas como dos categorías fijas según la misma regla de los KPI:
+  // edificio: VFE; red: VFF y FMR. Los 7 restantes se eligen por frecuencia.
+  function etaChartBuckets(rows){
+    const counts=new Map();
+    for(const r of rows){
+      const label=upper(siglaTarea(r))||'SIN SIGLA';
+      counts.set(label,(counts.get(label)||0)+1);
+    }
+    const fixedGroups=[
+      {label:'VFE',members:['VFE'],barClass:'eta-chart-bar-fall',itemClass:'eta-chart-item-fall',detailLabel:'Detalle de caídas'},
+      {label:'VFF / FMR',members:['VFF','FMR'],barClass:'eta-chart-bar-fall',itemClass:'eta-chart-item-fall',detailLabel:'Detalle de caídas'},
+      {label:'LII / LIH / LDI',members:['LII','LIH','LDI'],barClass:'eta-chart-bar-lii',itemClass:'eta-chart-item-lii',detailLabel:'Siglas agrupadas'},
+      {label:'RIP / RCP / ACP',members:['RIP','RCP','ACP'],barClass:'eta-chart-bar-rip',itemClass:'eta-chart-item-rip',detailLabel:'Siglas agrupadas'},
+      {label:'EDF / EDI / SRE',members:['EDF','EDI','SRE'],barClass:'eta-chart-bar-edf',itemClass:'eta-chart-item-edf',detailLabel:'Siglas agrupadas'},
+      {label:'VXC / VXA',members:['VXC','VXA'],barClass:'eta-chart-bar-vx',itemClass:'eta-chart-item-vx',detailLabel:'Siglas agrupadas'},
+      {label:'VAO',members:['VAO'],barClass:'eta-chart-bar-vao',itemClass:'eta-chart-item-vao',detailLabel:'Siglas agrupadas'}
+    ];
+    const used=new Set();
+    const fixed=[];
+    for(const group of fixedGroups){
+      const detail=group.members.map(name=>[name,counts.get(name)||0]).filter(([,n])=>n>0);
+      const count=detail.reduce((sum,[,n])=>sum+n,0);
+      group.members.forEach(name=>used.add(name));
+      if(!count)continue;
+      fixed.push({label:group.label,count,detail,barClass:group.barClass,itemClass:group.itemClass,detailLabel:group.detailLabel});
+    }
+    const rest=[...counts].filter(([name,count])=>!used.has(name)&&count>0)
+      .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'es',{sensitivity:'base'}));
+    const remainingSlots=Math.max(0,9-fixed.length);
+    const leaders=rest.slice(0,remainingSlots).map(([label,count])=>({label,count,detail:[[label,count]],detailLabel:'Sigla'}));
+    const others=rest.slice(remainingSlots);
+    const result=[...fixed,...leaders];
+    if(others.length)result.push({label:'OTROS',count:others.reduce((sum,[,n])=>sum+n,0),detail:others,itemClass:'eta-chart-item-other',barClass:'eta-chart-bar-other',detailLabel:'Siglas agrupadas'});
+    return result;
+  }
+  function etaChartClose(){
+    const modal=$('#etaTipifChartModal');
+    if(!modal||modal.classList.contains('hidden'))return;
+    modal.classList.add('hidden');modal.setAttribute('aria-hidden','true');
+    document.body.classList.remove('eta-chart-open');
+    $('#etaChartTooltip').classList.add('hidden');
+    (etaChartClose.previousFocus||$('#etaIngresoSummary'))?.focus?.();
+  }
+  function etaChartOpen(kind,day,sourceButton){
+    const modal=$('#etaTipifChartModal'),rows=etaChartRows(kind,day),buckets=etaChartBuckets(rows);
+    etaChartClose.previousFocus=sourceButton||document.activeElement;
+    closeAllFloatingMenus();
+    const dayLabel=day==='ayer'?'Ayer':'Hoy';
+    $('#etaChartTitle').textContent=`${kind==='ingreso'?'Ingreso ETA':'Completados'} · ${dayLabel}`;
+    $('#etaChartSubtitle').textContent=`${dailyDateKey(day).split('-').reverse().join('/')} · ${rows.length} tickets · ${new Set(rows.map(r=>upper(siglaTarea(r))||'SIN SIGLA')).size} tipificaciones`;
+    const body=$('#etaChartBody');
+    if(!buckets.length){body.innerHTML='<p class="eta-chart-empty">No hay tickets para graficar en este día.</p>';}
+    else{
+      const max=Math.max(1,...buckets.map(b=>b.count));
+      body.innerHTML=`<div class="eta-chart-plot" aria-label="Cantidad de tickets por tipificación">${buckets.map((b,i)=>{
+        const height=Math.max(4,Math.round(b.count/max*100));
+        const text=b.label.length>19?b.label.slice(0,17)+'…':b.label;
+        const itemClass=['eta-chart-bar-item',b.itemClass||''].filter(Boolean).join(' ');
+        const barClass=['eta-chart-bar',b.barClass||''].filter(Boolean).join(' ');
+        return `<button type="button" class="${itemClass}" data-eta-bar="${i}" style="--eta-bar-height:${height}%" aria-label="${esc(b.label)}: ${b.count} tickets" title="${esc(b.label)} · ${b.count} tickets"><span class="eta-chart-bar-track"><span class="eta-chart-value">${b.count}</span><span class="${barClass}" style="height:${height}%"></span></span><span class="eta-chart-category" title="${esc(b.label)}">${esc(text)}</span></button>`;
+      }).join('')}</div>`;
+      body.querySelectorAll('[data-eta-bar]').forEach(btn=>btn.onclick=()=>{
+        body.querySelectorAll('.eta-chart-bar-item').forEach(x=>x.classList.remove('selected'));
+        btn.classList.add('selected');
+        const b=buckets[Number(btn.dataset.etaBar)];
+        const tip=$('#etaChartTooltip');
+        tip.innerHTML=`<strong>${esc(b.label)}</strong><span>${b.count} ${b.count===1?'ticket':'tickets'}</span>`+
+          (b.detail?`<small>${esc((b.detailLabel||'Siglas agrupadas')+': '+b.detail.length)}</small><div class="eta-chart-other-list">${[...b.detail].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'es',{sensitivity:'base'})).map(([label,n])=>`<div><span>${esc(label)}</span><b>${n}</b></div>`).join('')}</div>`:'');
+        tip.classList.remove('hidden');
+      });
+    }
+    $('#etaChartTooltip').classList.add('hidden');
+    modal.classList.remove('hidden');modal.setAttribute('aria-hidden','false');
+    document.body.classList.add('eta-chart-open');
+    $('#etaChartClose').focus();
+  }
+  document.querySelectorAll('.eta-chart-trigger').forEach(btn=>btn.addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();etaChartOpen(btn.dataset.chartKind,btn.dataset.chartDay,btn);
+  }));
+  $('#etaChartClose').addEventListener('click',etaChartClose);
+  $('#etaTipifChartModal').addEventListener('click',e=>{if(e.target===$('#etaTipifChartModal'))etaChartClose();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#etaTipifChartModal').classList.contains('hidden')){e.preventDefault();e.stopImmediatePropagation();etaChartClose();}},true);
   $('#btnEtaIngresoAyer').onclick=e=>{e.preventDefault();setIngresoEtaView('ayer');};
   $('#btnEtaIngresoHoy').onclick=e=>{e.preventDefault();setIngresoEtaView('hoy');};
-  $('#btnApplyFilters').onclick=e=>{flashButton(e.currentTarget);applyFilters();showToast('Filtros aplicados');};
+  $('#btnCompletedYesterday').onclick=e=>{e.preventDefault();setCompletedDayView('ayer');};
+  $('#btnCompletedToday').onclick=e=>{e.preventDefault();setCompletedDayView('hoy');};
+  $('#btnEtaIngresoExcel').onclick=e=>{e.preventDefault();e.stopPropagation();exportIngresoDay();};
+  $('#btnCompletedExcel').onclick=e=>{e.preventDefault();e.stopPropagation();exportDailyStateTickets('completed',state.dailyCompletedDayKey||dailyDateKey('hoy'));};
+  for(const id of ['etaIngresoDetails','dailyStateDetails','columnChooser']){
+    document.getElementById(id)?.addEventListener('toggle',e=>{
+      if(e.target.open)closeAllFloatingMenus(e.target);
+    });
+  }
   $('#btnClearFilters').onclick=e=>{flashButton(e.currentTarget);resetFilters();showToast('Filtros restablecidos');};
   function openMapModal(){const modal=$('#mapModal');if(!modal)return;modal.classList.remove('hidden');modal.setAttribute('aria-hidden','false');$('#btnToggleMap')?.setAttribute('aria-pressed','true');updateMap();}
   function closeMapModal(){const modal=$('#mapModal');if(!modal)return;modal.classList.add('hidden');modal.setAttribute('aria-hidden','true');$('#btnToggleMap')?.setAttribute('aria-pressed','false');}
@@ -1952,6 +2169,7 @@
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
+
 
 
 
