@@ -670,7 +670,20 @@
   function availableRows(){return state.current.filter(passesExclusions);}
   function buildFilterUniverse(){const rows=availableRows();for(const key of ['Estado','Contratista','Arbol','Capa','SubCapa','Tipif','Afectacion'])state.filterValues[key]=[...new Set(rows.map(r=>getValue(r,key)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true,sensitivity:'base'}));}
   function resetDefaultStatusFilter(){const live=(state.filterValues.Estado||[]).filter(v=>isLiveStatus(v));const fallback=(state.filterValues.Estado||[]).filter(v=>!['completed','cancelled','notdone'].includes(statusKey(v)));state.defaultLiveStatuses=new Set(live.length?live:fallback);state.topFilters.Estado=new Set(state.defaultLiveStatuses);state.colFilters.Estado=new Set();state.columnSelections.status=new Set(state.defaultLiveStatuses);}
-  function selectedLabel(key,set){const all=state.filterValues[key]||[];if(!set||set.size===0)return'Todos';if(key==='Estado'&&state.defaultLiveStatuses?.size&&set.size===state.defaultLiveStatuses.size&&[...set].every(v=>state.defaultLiveStatuses.has(v)))return`Abiertos (${set.size})`;if(set.size===all.length)return'Todos';if(set.size===1)return[...set][0];return`${set.size} seleccionados`;}
+  // Sin restricción (Set vacío) equivale a Todos. El centinela permite
+  // distinguirlo de una selección manual que dejó cero valores marcados.
+  const ETA_NO_VALUES='__ETA_NO_VALUES__';
+  function etaAllChecked(bag,values){return !bag.size || (values.length>0 && values.every(v=>bag.has(v)));}
+  function etaValueChecked(bag,value){return !bag.size || bag.has(value);}
+  function etaToggleValue(bag,value,checked,universe){
+    if(!bag.size){universe.forEach(v=>bag.add(v));}
+    bag.delete(ETA_NO_VALUES);
+    if(checked)bag.add(value);else bag.delete(value);
+    if(!bag.size)bag.add(ETA_NO_VALUES);
+    else if(universe.length && universe.every(v=>bag.has(v)))bag.clear();
+  }
+  function etaSelectAll(bag){bag.clear();}
+  function selectedLabel(key,set){const all=state.filterValues[key]||[];if(!set||set.size===0)return'Todos';if(set.has(ETA_NO_VALUES))return'0 seleccionados';if(key==='Estado'&&state.defaultLiveStatuses?.size&&set.size===state.defaultLiveStatuses.size&&[...set].every(v=>state.defaultLiveStatuses.has(v)))return`Abiertos (${set.size})`;if(set.size===all.length)return'Todos';if(set.size===1)return[...set][0];return`${set.size} seleccionados`;}
 
   function syncTopAndColumnFilter(source,key,bag){
     if(source==='top'){
@@ -693,8 +706,8 @@
     const store=scope==='top'?state.topFilters:state.colFilters;if(!(store[key] instanceof Set))store[key]=new Set();const bag=store[key];
     const tools=document.createElement('div');tools.className='multi-tools';tools.innerHTML='<input type="search" placeholder="Buscar…"><button type="button" data-a="toggle">Todos</button><button type="button" class="multi-close" data-a="close" aria-label="Cerrar filtro">×</button>';
     const list=document.createElement('div');list.className='multi-list';panel.append(tools,list);wrap.append(btn,panel);host.append(wrap);
-    const render=()=>{btn.textContent=selectedLabel(key,bag);const q=norm(tools.querySelector('input').value).toLowerCase();const vals=(state.filterValues[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));list.innerHTML=vals.length?vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}><span>${esc(v)}</span></label>`).join(''):'<div class="multi-empty">Sin valores</div>';const toggleBtn=tools.querySelector('[data-a="toggle"]');const allSelected=vals.length>0&&vals.every(v=>bag.has(v));if(toggleBtn)toggleBtn.textContent=allSelected?'Ninguno':'Todos';list.querySelectorAll('input').forEach(i=>i.onchange=()=>{i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter(scope,key,bag);btn.textContent=selectedLabel(key,bag);render();state.page=1;applyFilters();});};
-    btn.onclick=e=>{e.stopPropagation();closeAllFloatingMenus(panel);panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}const vals=(state.filterValues[key]||[]);const allSelected=vals.length>0&&vals.every(v=>bag.has(v));if(allSelected)bag.clear();else vals.forEach(v=>bag.add(v));syncTopAndColumnFilter(scope,key,bag);render();state.page=1;applyFilters();});host._refresh=render;
+    const render=()=>{btn.textContent=selectedLabel(key,bag);const q=norm(tools.querySelector('input').value).toLowerCase();const vals=(state.filterValues[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));list.innerHTML=vals.length?vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${etaValueChecked(bag,v)?'checked':''}><span>${esc(v)}</span></label>`).join(''):'<div class="multi-empty">Sin valores</div>';const toggleBtn=tools.querySelector('[data-a="toggle"]');const allSelected=etaAllChecked(bag,state.filterValues[key]||[]);if(toggleBtn){toggleBtn.textContent='Todos';toggleBtn.classList.toggle('eta-all-active',allSelected);}list.querySelectorAll('input').forEach(i=>i.onchange=()=>{etaToggleValue(bag,i.value,i.checked,state.filterValues[key]||[]);syncTopAndColumnFilter(scope,key,bag);btn.textContent=selectedLabel(key,bag);render();state.page=1;applyFilters();});};
+    btn.onclick=e=>{e.stopPropagation();closeAllFloatingMenus(panel);panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}etaSelectAll(bag);syncTopAndColumnFilter(scope,key,bag);render();state.page=1;applyFilters();});host._refresh=render;
   }
   function buildAllMultis(){for(const [id,key] of [['topEstado','Estado'],['topContratista','Contratista'],['topArbol','Arbol'],['topCapa','Capa'],['topSubCapa','SubCapa'],['topTipif','Tipif'],['colStatus','Estado'],['colContractor','Contratista'],['colAffected','Afectacion'],['colCapa','Capa'],['colSubcapa','SubCapa'],['colTipif','Tipif'],['colTree','Arbol']])makeMulti(id,key,id.startsWith('top')?'top':'col');}
   function closeAllFloatingMenus(except=null){
@@ -785,7 +798,7 @@
       }
     }
   }
-  function columnFilterLabel(key){const color=state.columnColorSelections[key];if(color)return `● ${COLOR_META[color]?.label||color}`;const bag=state.columnSelections[key];if(!bag||bag.size===0)return'Todos';const vals=state.columnValueCache[key]||[];if(bag.size===1)return[...bag][0];return`${bag.size} selecc.`;}
+  function columnFilterLabel(key){const color=state.columnColorSelections[key];if(color)return `● ${COLOR_META[color]?.label||color}`;const bag=state.columnSelections[key];if(!bag||bag.size===0)return'Todos';if(bag.has(ETA_NO_VALUES))return'0 selecc.';const vals=state.columnValueCache[key]||[];if(bag.size===1)return[...bag][0];return`${bag.size} selecc.`;}
   function makeExcelColumnFilter(host,key){
     host.innerHTML='';host.dataset.filterKey=key;
     const wrap=document.createElement('div');wrap.className='multi excel-multi';
@@ -808,7 +821,7 @@
       if(!options.length){colorBox.classList.add('hidden');colorBox.innerHTML='';return;}
       colorBox.classList.remove('hidden');
       colorBox.innerHTML='<div class="color-filter-title">Filtrar por color</div><div class="color-filter-options">'+
-        `<button type="button" class="color-filter-chip" data-color=""><span class="color-swatch clear-swatch">×</span>Todos</button>`+
+        `<button type="button" class="color-filter-chip ${!selected && !bag.size ? 'active' : ''}" data-color=""><span class="color-swatch clear-swatch">×</span>Todos</button>`+
         options.map(o=>`<button type="button" class="color-filter-chip ${selected===o.key?'active':''}" data-color="${esc(o.key)}"><span class="color-swatch" style="background:${o.hex}"></span>${esc(o.label)}</button>`).join('')+
         '</div>';
       colorBox.querySelectorAll('[data-color]').forEach(b=>b.onclick=e=>{
@@ -842,12 +855,12 @@
       list.innerHTML=vals.map(v=>{
         const ck=colorMap?.get(v),meta=COLOR_META[ck];
         const sw=meta?`<span class="filter-value-swatch" style="background:${meta.hex}" title="${esc(meta.label)}"></span>`:'';
-        return `<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${bag.has(v)?'checked':''}>${sw}<span>${esc(v)}</span></label>`;
+        return `<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${!activeColor&&etaValueChecked(bag,v)?'checked':''}>${sw}<span>${esc(v)}</span></label>`;
       }).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';
       const toggleBtn=panel.querySelector('[data-a="toggle"]');
-      if(toggleBtn)toggleBtn.textContent='Todos';
+      if(toggleBtn){toggleBtn.textContent='Todos';toggleBtn.classList.toggle('eta-all-active',!activeColor&&etaAllChecked(bag,state.columnValueCache[key]||[]));}
       list.querySelectorAll('input').forEach(i=>i.onchange=()=>{
-        delete state.columnColorSelections[key];i.checked?bag.add(i.value):bag.delete(i.value);syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();
+        if(activeColor){bag.clear();bag.add(i.value);}else{etaToggleValue(bag,i.value,i.checked,state.columnValueCache[key]||[]);}delete state.columnColorSelections[key];syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();
       });
       renderColors();
     };
@@ -1064,7 +1077,9 @@
 
   function duplicateSets(rows){
     const countBy=(getter)=>{const m=new Map();for(const r of rows){const v=upper(getter(r));if(!v||v==='—')continue;m.set(v,(m.get(v)||0)+1);}return new Set([...m].filter(([,n])=>n>1).map(([v])=>v));};
-    return {nodes:countBy(node),parents:countBy(parentEvent)};
+    const countByRows=(subset,getter)=>{const m=new Map();for(const r of subset){const v=upper(getter(r));if(!v||v==='—')continue;m.set(v,(m.get(v)||0)+1);}return new Set([...m].filter(([,n])=>n>1).map(([v])=>v));};
+    const openRows=rows.filter(r=>isLiveStatus(r.Estado||r.status));
+    return {nodes:countByRows(openRows,node),parents:countByRows(openRows,parentEvent)};
   }
 
   function renderTable(){const total=state.filtered.length,pages=Math.max(1,Math.ceil(total/PAGE_SIZE));if(state.page>pages)state.page=pages;const start=(state.page-1)*PAGE_SIZE,rows=state.filtered.slice(start,start+PAGE_SIZE),dups=state.duplicateBaseSets||duplicateSets(availableRows());$('#opPageLabel').textContent=`Página ${state.page} de ${pages}`;$('#opCountLabel').textContent=`${total.toLocaleString('es-AR')} visibles · ${state.meta.apiTotal.toLocaleString('es-AR')} intervenciones · ${state.meta.uniqueTotal.toLocaleString('es-AR')} tareas únicas`;$('#opPrev').disabled=state.page<=1;$('#opNext').disabled=state.page>=pages;const tb=$('#opTbody');if(!rows.length){tb.innerHTML=`<tr><td colspan="${COLUMN_DEFS.length}" class="empty">Sin resultados con los filtros actuales</td></tr>`;return;}tb.innerHTML=rows.map(r=>`<tr data-task="${esc(taskId(r))}">${COLUMN_DEFS.map(([k])=>{const duplicate=(k==='node'&&dups.nodes.has(upper(node(r))))||(k==='parentEvent'&&dups.parents.has(upper(parentEvent(r))));return `<td data-column="${k}" class="${k==='ageDays'?`age-cell ${taskAgeClass(r)}`:(k==='eventAgeDays'||k==='parentAgeDays')?`age-cell ${eventAgeClass(k==='parentAgeDays'?parentAgeDays(r):eventAgeDays(r))}`:''} ${k==='created'?`created-cell ${createdClass(r)}`:''} ${k==='tipif'&&['VFF','FMR','VFE'].includes(upper(siglaTarea(r)))?'tipif-alert':''} ${(k==='capa'||k==='capaSubcapa')?`capa-cell ${capaClass(capa(r))}`:''} ${k==='subcapa'?`subcapa-cell ${subcapaClass(subcapa(r))}`:''} ${k==='origin'?`origin-cell ${originClass(origin(r))}`:''} ${duplicate?'duplicate-green':''}">${cellHtml(r,k)}</td>`;}).join('')}</tr>`).join('');applyColumnVisibility();tb.querySelectorAll('tr[data-task]').forEach(tr=>tr.onclick=e=>{const btn=e.target.closest('[data-mira-node]');if(btn){showMiraPopup(btn.dataset.miraNode);return;}if(e.target.closest('.task-link'))openTaskDrawer(tr.dataset.task)});requestAnimationFrame(updateTableHorizontalScroller);scheduleMiraScan();}
@@ -2169,6 +2184,7 @@
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
+
 
 
 
