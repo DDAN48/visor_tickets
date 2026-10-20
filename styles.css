@@ -1407,4 +1407,13 @@ body.eta-chart-open{overflow:hidden}
   box-shadow:inset 0 0 0 1px #bfdbfe!important;
 }
 
+/* V23.8.14: respuesta visual inmediata del selector Todos. */
+.multi-tools button[data-a="toggle"]{cursor:pointer!important;transition:background-color .12s ease,transform .12s ease,box-shadow .12s ease!important;border:1px solid #cbd5e1!important;min-height:29px}
+.multi-tools button[data-a="toggle"]:hover{background:#dbeafe!important;color:#174ea6!important;border-color:#7ca5ed!important;box-shadow:0 1px 6px #2563eb33!important;transform:translateY(-1px)}
+.multi-tools button[data-a="toggle"]:active{transform:scale(.96);background:#bfdbfe!important}
+.multi-tools button[data-a="toggle"]:focus-visible{outline:2px solid #2563eb!important;outline-offset:2px}
+.multi-tools button[data-a="toggle"].eta-toggle-pulse{animation:etaToggleFeedback .28s ease-out}
+@keyframes etaToggleFeedback{0%{box-shadow:0 0 0 0 #2563eb55}100%{box-shadow:0 0 0 5px #2563eb00}}
+
+
 
