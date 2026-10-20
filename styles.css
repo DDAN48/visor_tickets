@@ -1392,3 +1392,19 @@ body.eta-chart-open{overflow:hidden}
 .kpi-strip button.kpi:focus-visible{outline:3px solid #347bd4;outline-offset:1px}
 
 
+
+/* Selección visual coherente para Todos y valores activos (cabecera y columnas). */
+.multi-tools button[data-a="toggle"].eta-all-active,
+.excel-filter-portal .multi-tools button[data-a="toggle"].eta-all-active {
+  background:#dbeafe!important;color:#174ea6!important;
+  border:1px solid #7ca5ed!important;
+  box-shadow:inset 0 0 0 1px #bfdbfe!important;
+}
+.multi-option input[type="checkbox"]{accent-color:#2563eb!important}
+.multi-option:has(input[type="checkbox"]:checked){background:#eff6ff;border-radius:5px}
+.excel-panel .color-filter-chip[data-color=""].active {
+  background:#dbeafe!important;border-color:#7ca5ed!important;
+  box-shadow:inset 0 0 0 1px #bfdbfe!important;
+}
+
+
