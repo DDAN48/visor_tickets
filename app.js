@@ -682,7 +682,19 @@
     if(!bag.size)bag.add(ETA_NO_VALUES);
     else if(universe.length && universe.every(v=>bag.has(v)))bag.clear();
   }
-  function etaSelectAll(bag){bag.clear();}
+  function etaToggleAll(bag, universe){
+    if(etaAllChecked(bag,universe)){bag.clear();bag.add(ETA_NO_VALUES);}
+    else bag.clear();
+  }
+  // Mostrar inmediatamente el estado del botón antes de recalcular la tabla.
+  function etaUpdateToggleVisual(button, selected){
+    if(!button)return;
+    button.classList.toggle('eta-all-active',selected);
+    button.setAttribute('aria-pressed',String(selected));
+    button.classList.remove('eta-toggle-pulse');
+    void button.offsetWidth;
+    button.classList.add('eta-toggle-pulse');
+  }
   function selectedLabel(key,set){const all=state.filterValues[key]||[];if(!set||set.size===0)return'Todos';if(set.has(ETA_NO_VALUES))return'0 seleccionados';if(key==='Estado'&&state.defaultLiveStatuses?.size&&set.size===state.defaultLiveStatuses.size&&[...set].every(v=>state.defaultLiveStatuses.has(v)))return`Abiertos (${set.size})`;if(set.size===all.length)return'Todos';if(set.size===1)return[...set][0];return`${set.size} seleccionados`;}
 
   function syncTopAndColumnFilter(source,key,bag){
@@ -706,8 +718,8 @@
     const store=scope==='top'?state.topFilters:state.colFilters;if(!(store[key] instanceof Set))store[key]=new Set();const bag=store[key];
     const tools=document.createElement('div');tools.className='multi-tools';tools.innerHTML='<input type="search" placeholder="Buscar…"><button type="button" data-a="toggle">Todos</button><button type="button" class="multi-close" data-a="close" aria-label="Cerrar filtro">×</button>';
     const list=document.createElement('div');list.className='multi-list';panel.append(tools,list);wrap.append(btn,panel);host.append(wrap);
-    const render=()=>{btn.textContent=selectedLabel(key,bag);const q=norm(tools.querySelector('input').value).toLowerCase();const vals=(state.filterValues[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));list.innerHTML=vals.length?vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${etaValueChecked(bag,v)?'checked':''}><span>${esc(v)}</span></label>`).join(''):'<div class="multi-empty">Sin valores</div>';const toggleBtn=tools.querySelector('[data-a="toggle"]');const allSelected=etaAllChecked(bag,state.filterValues[key]||[]);if(toggleBtn){toggleBtn.textContent='Todos';toggleBtn.classList.toggle('eta-all-active',allSelected);}list.querySelectorAll('input').forEach(i=>i.onchange=()=>{etaToggleValue(bag,i.value,i.checked,state.filterValues[key]||[]);syncTopAndColumnFilter(scope,key,bag);btn.textContent=selectedLabel(key,bag);render();state.page=1;applyFilters();});};
-    btn.onclick=e=>{e.stopPropagation();closeAllFloatingMenus(panel);panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}etaSelectAll(bag);syncTopAndColumnFilter(scope,key,bag);render();state.page=1;applyFilters();});host._refresh=render;
+    const render=()=>{btn.textContent=selectedLabel(key,bag);const q=norm(tools.querySelector('input').value).toLowerCase();const vals=(state.filterValues[key]||[]).filter(v=>!q||v.toLowerCase().includes(q));list.innerHTML=vals.length?vals.map(v=>`<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${etaValueChecked(bag,v)?'checked':''}><span>${esc(v)}</span></label>`).join(''):'<div class="multi-empty">Sin valores</div>';const toggleBtn=tools.querySelector('[data-a="toggle"]');const allSelected=etaAllChecked(bag,state.filterValues[key]||[]);if(toggleBtn){toggleBtn.textContent='Todos';toggleBtn.classList.toggle('eta-all-active',allSelected);toggleBtn.setAttribute('aria-pressed',String(allSelected));}list.querySelectorAll('input').forEach(i=>i.onchange=()=>{etaToggleValue(bag,i.value,i.checked,state.filterValues[key]||[]);syncTopAndColumnFilter(scope,key,bag);btn.textContent=selectedLabel(key,bag);render();state.page=1;applyFilters();});};
+    btn.onclick=e=>{e.stopPropagation();closeAllFloatingMenus(panel);panel.classList.toggle('hidden');if(!panel.classList.contains('hidden'))render();};tools.querySelector('input').oninput=render;tools.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.dataset.a==='close'){panel.classList.add('hidden');return;}etaToggleAll(bag,state.filterValues[key]||[]);etaUpdateToggleVisual(b,etaAllChecked(bag,state.filterValues[key]||[]));syncTopAndColumnFilter(scope,key,bag);render();state.page=1;setTimeout(applyFilters,0);});host._refresh=render;
   }
   function buildAllMultis(){for(const [id,key] of [['topEstado','Estado'],['topContratista','Contratista'],['topArbol','Arbol'],['topCapa','Capa'],['topSubCapa','SubCapa'],['topTipif','Tipif'],['colStatus','Estado'],['colContractor','Contratista'],['colAffected','Afectacion'],['colCapa','Capa'],['colSubcapa','SubCapa'],['colTipif','Tipif'],['colTree','Arbol']])makeMulti(id,key,id.startsWith('top')?'top':'col');}
   function closeAllFloatingMenus(except=null){
@@ -858,7 +870,7 @@
         return `<label class="multi-option"><input type="checkbox" value="${esc(v)}" ${!activeColor&&etaValueChecked(bag,v)?'checked':''}>${sw}<span>${esc(v)}</span></label>`;
       }).join('')+(total>350?`<div class="multi-empty">Mostrando 350 de ${total}. Escribí para buscar.</div>`:'')||'<div class="multi-empty">Sin valores</div>';
       const toggleBtn=panel.querySelector('[data-a="toggle"]');
-      if(toggleBtn){toggleBtn.textContent='Todos';toggleBtn.classList.toggle('eta-all-active',!activeColor&&etaAllChecked(bag,state.columnValueCache[key]||[]));}
+      if(toggleBtn){toggleBtn.textContent='Todos';toggleBtn.classList.toggle('eta-all-active',!activeColor&&etaAllChecked(bag,state.columnValueCache[key]||[]));toggleBtn.setAttribute('aria-pressed',String(!activeColor&&etaAllChecked(bag,state.columnValueCache[key]||[])));}
       list.querySelectorAll('input').forEach(i=>i.onchange=()=>{
         if(activeColor){bag.clear();bag.add(i.value);}else{etaToggleValue(bag,i.value,i.checked,state.columnValueCache[key]||[]);}delete state.columnColorSelections[key];syncTopAndColumnFilter('column',key,bag);render();state.page=1;applyFilters();
       });
@@ -868,13 +880,15 @@
     panel.onclick=e=>e.stopPropagation();search.oninput=render;
     panel.querySelector('[data-a="close"]').onclick=e=>{e.stopPropagation();close();};
     panel.querySelector('[data-a="toggle"]').onclick=e=>{e.stopPropagation();
-      // Todos = sin filtro, nunca almacenar una selección masiva de casillas.
-      bag.clear();
+      // Alternar entre todas las casillas y ninguna (sin alterar otros filtros).
+      const wasAll=!state.columnColorSelections[key] && etaAllChecked(bag,state.columnValueCache[key]||[]);
+      if(wasAll){bag.clear();bag.add(ETA_NO_VALUES);}else{bag.clear();}
+      etaUpdateToggleVisual(panel.querySelector('[data-a="toggle"]'),!wasAll);
       delete state.columnColorSelections[key];
       delete state.textFilters[key];
       search.value='';
       syncTopAndColumnFilter('column',key,bag);
-      render();state.page=1;applyFilters();
+      render();state.page=1;setTimeout(applyFilters,0);
     };
     host._refresh=()=>{if(panel.classList.contains('hidden'))updateButton();else render();};updateButton();
   }
