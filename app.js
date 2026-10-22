@@ -123,7 +123,7 @@
   const contractor=r=>{
     const raw=norm(r.Contratista||r.contratista);
     const key=upper(raw).replace(/[ _-]+/g,' ').replace(/\s+/g,' ').trim();
-    if(key==='RD CONSTRUCCIONES'||key==='CONSTRUCCIONES RD')return 'RD_CONSTRUCCIONES';
+    if(key==='RD CONSTRUCCIONES'||key==='CONSTRUCCIONES RD'||key==='CONSTRUCCIONES RD')return 'CONSTRUCCIONES RD';
     return raw;
   };
   const tech=r=>norm(r.Tecnico||r.resourceName||r.tecnico);
