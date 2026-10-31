@@ -130,6 +130,8 @@
   const resource=r=>norm(r.IDRecurso||r.resourceId||r.id_recurso);
   const capa=r=>norm(r.Capa||r.capa);
   const subcapa=r=>norm(r.SubCapa||r.subcapa);
+  // Fibra puede estar clasificada en Capa o SubCapa (p. ej. NRG: Red / Fibra).
+  const esFibra=r=>capa(r).toLowerCase().includes('fibra')||subcapa(r).toLowerCase().includes('fibra');
   const node=r=>norm(r.Nodo||r.nodo);
   const scheduled=r=>r.Agendado||r.agendado||r.date||'';
   // Antigüedades por DÍAS CALENDARIO (Argentina), no bloques móviles de 24 horas.
@@ -905,7 +907,7 @@
       case 'Caídas nodo':return sig==='VFF'||sig==='FMR';
       case 'Caídas Edif':return sig==='VFE';
       case 'Ingress':return ['EDF','LDI','LIH','LII','EDI'].includes(sig);
-      case 'Fibra':return layer.includes('fibra');
+      case 'Fibra':return esFibra(r);
       case 'Red + Energía':return layer.includes('usac');
       case 'Infra':return layer==='infra';
       case 'Edificio':return layer==='edificio';
@@ -1068,7 +1070,7 @@
 
   function renderAll(){renderKpis();renderDailyStatePanel();renderIngresoEta();renderTable();updateMap();}
   function computeKpis(){const rows=state.filtered;const count=p=>rows.filter(p).length,unique=p=>new Set(rows.filter(p).map(taskId)).size;const eventDays=r=>eventAgeDays(r);const days=rows.map(ageDays).filter(Number.isFinite);const oldestDays=days.length?Math.max(...days):0;const layer=r=>capa(r).toLowerCase();return [
-    ['Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],['+3 días',count(r=>(ageDays(r)??-1)>=3),'age-red'],['2 días',count(r=>ageDays(r)===2),'age-yellow'],['1 día',count(r=>ageDays(r)===1),'age-green'],['Más antigua',`${oldestDays} días`,''],['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],['Fibra',unique(r=>layer(r).includes('fibra')),'capa-fibra'],['Red + Energía',unique(r=>layer(r).includes('usac')),'capa-usac'],['Infra',unique(r=>layer(r)==='infra'),'capa-infra'],['Edificio',unique(r=>layer(r)==='edificio'),'capa-edificio'],['Ev +2d',count(r=>(eventDays(r)??-1)>=2),''],['Ev +3d',count(r=>(eventDays(r)??-1)>=3),''],['Ev +7d',count(r=>(eventDays(r)??-1)>=7),'']];}
+    ['Abiertos',count(r=>isLiveStatus(r.Estado||r.status)),''],['+3 días',count(r=>(ageDays(r)??-1)>=3),'age-red'],['2 días',count(r=>ageDays(r)===2),'age-yellow'],['1 día',count(r=>ageDays(r)===1),'age-green'],['Más antigua',`${oldestDays} días`,''],['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],['Fibra',unique(r=>esFibra(r)),'capa-fibra'],['Red + Energía',unique(r=>layer(r).includes('usac')),'capa-usac'],['Infra',unique(r=>layer(r)==='infra'),'capa-infra'],['Edificio',unique(r=>layer(r)==='edificio'),'capa-edificio'],['Ev +2d',count(r=>(eventDays(r)??-1)>=2),''],['Ev +3d',count(r=>(eventDays(r)??-1)>=3),''],['Ev +7d',count(r=>(eventDays(r)??-1)>=7),'']];}
   function renderKpis(){
     state.kpiValues=computeKpis();
     $('#kpiStrip').innerHTML=state.kpiValues.map(([l,v,c])=>{
@@ -1609,7 +1611,7 @@
       ['Caídas nodo',unique(r=>['VFF','FMR'].includes(siglaTarea(r))),''],
       ['Caídas Edif',unique(r=>siglaTarea(r)==='VFE'),''],
       ['Ingress',unique(r=>['EDF','LDI','LIH','LII','EDI'].includes(siglaTarea(r))),''],
-      ['Fibra',unique(r=>layer(r).includes('fibra')),''],
+      ['Fibra',unique(r=>esFibra(r)),''],
       ['Red + Energía',unique(r=>layer(r).includes('usac')),''],
       ['Infra',unique(r=>layer(r)==='infra'),''],
       ['Edificio',unique(r=>layer(r)==='edificio'),''],
@@ -2198,6 +2200,12 @@
 
   loadSavedExclusions();ensureOperationalDates();buildAllMultis();installTableHorizontalScroller();applyTableZoom();applyHistoryZoom();loadAllOperativo();loadControlStatus(false);
 })();
+
+
+
+
+
+
 
 
 
